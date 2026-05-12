@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Phone, FileText, CheckCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { getSendCharge, formatCharge } from '../lib/charges';
 import Navbar from '../components/Navbar';
 import BottomNav from '../components/BottomNav';
 
@@ -16,22 +17,27 @@ export default function SendMoney() {
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
+  const amount = parseFloat(form.amount) || 0;
+  const charge = getSendCharge(amount);
+  const total = amount + charge;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (!amount || amount <= 0) { setError('Enter a valid amount'); setLoading(false); return; }
+    if (amount < 10) { setError('Minimum send amount is KES 10'); return; }
+    if (amount > 1000000) { setError('Maximum send amount is KES 1,000,000'); return; }
+    if (total > profile.balance) { setError(`Insufficient balance. You need KES ${total.toLocaleString()} (amount + charge)`); return; }
+
     setLoading(true);
 
-    const amount = parseFloat(form.amount);
-    if (!amount || amount <= 0) {
-      setError('Enter a valid amount');
-      setLoading(false);
-      return;
-    }
-
-    if (amount < 10) {
-      setError('Minimum send amount is KES 10');
-      setLoading(false);
-      return;
+    // First deduct the charge if any
+    if (charge > 0) {
+      await supabase.rpc('deposit_money', {
+        p_user_id: profile.id,
+        p_amount: -charge, // negative to deduct
+      });
     }
 
     const { data, error: fnError } = await supabase.rpc('send_money', {
@@ -65,7 +71,12 @@ export default function SendMoney() {
           <p style={{ color: 'var(--text-muted)', marginBottom: 4 }}>
             KES {Number(form.amount).toLocaleString()} sent to
           </p>
-          <p style={{ fontWeight: 700, fontSize: 18, marginBottom: 32 }}>{success.receiver_name}</p>
+          <p style={{ fontWeight: 700, fontSize: 18, marginBottom: 8 }}>{success.receiver_name}</p>
+          {charge > 0 && (
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>
+              Transaction fee: KES {charge.toLocaleString()}
+            </p>
+          )}
           <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 8 }}>New balance</p>
           <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 28, fontWeight: 700, color: 'var(--green)', marginBottom: 40 }}>
             KES {Number(profile.balance).toLocaleString('en-KE', { minimumFractionDigits: 2 })}
@@ -127,6 +138,7 @@ export default function SendMoney() {
                   name="amount"
                   placeholder="0.00"
                   min="10"
+                  max="1000000"
                   step="1"
                   value={form.amount}
                   onChange={handleChange}
@@ -135,6 +147,28 @@ export default function SendMoney() {
                 />
               </div>
             </div>
+
+            {/* Charge breakdown */}
+            {amount > 0 && (
+              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', fontSize: 13 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Amount</span>
+                  <span>KES {amount.toLocaleString()}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Transaction Fee</span>
+                  <span style={{ color: charge === 0 ? 'var(--green)' : 'var(--text)' }}>
+                    {formatCharge(charge)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 4 }}>
+                  <span style={{ fontWeight: 700 }}>Total Deducted</span>
+                  <span style={{ fontFamily: 'Space Mono, monospace', fontWeight: 700, color: 'var(--green)' }}>
+                    KES {total.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div className="input-group">
               <label>Note (Optional)</label>
@@ -152,7 +186,7 @@ export default function SendMoney() {
             </div>
 
             <button type="submit" className="btn-primary" disabled={loading}>
-              {loading ? 'Sending...' : `Send KES ${form.amount || '0'}`}
+              {loading ? 'Sending...' : `Send KES ${form.amount || '0'} ${charge > 0 ? `+ KES ${charge} fee` : '(Free)'}`}
             </button>
           </div>
         </form>
@@ -160,4 +194,4 @@ export default function SendMoney() {
       <BottomNav />
     </div>
   );
-}
+                }
