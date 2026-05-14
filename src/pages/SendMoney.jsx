@@ -1,4 +1,4 @@
-       import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Phone, FileText, CheckCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -287,5 +287,5 @@ export default function SendMoney() {
       <BottomNav />
     </div>
   );
-}
- 
+  }
+              
