@@ -4,10 +4,12 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
-import SendMoney from './pages/SendMoney';
+import SendMoney from './pages/SendMoneyV2';
 import Deposit from './pages/Deposit';
 import Withdraw from './pages/Withdraw';
 import History from './pages/History';
+import Wallets from './pages/Wallets';
+import Convert from './pages/Convert';
 import './index.css';
 
 const PrivateRoute = ({ children }) => {
@@ -41,6 +43,8 @@ function AppRoutes() {
       <Route path="/deposit" element={<PrivateRoute><Deposit /></PrivateRoute>} />
       <Route path="/withdraw" element={<PrivateRoute><Withdraw /></PrivateRoute>} />
       <Route path="/history" element={<PrivateRoute><History /></PrivateRoute>} />
+      <Route path="/wallets" element={<PrivateRoute><Wallets /></PrivateRoute>} />
+      <Route path="/convert" element={<PrivateRoute><Convert /></PrivateRoute>} />
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );
