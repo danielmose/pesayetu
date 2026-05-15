@@ -4,7 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
-import SendMoney from './pages/SendMoneyV2';
+import SendMoney from './pages/SendMoney';
 import Deposit from './pages/Deposit';
 import Withdraw from './pages/Withdraw';
 import History from './pages/History';
