@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, ArrowLeftRight, CheckCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { CURRENCIES, fetchExchangeRates, convertCurrency, formatAmount } from '../lib/currencies';
+import { CURRENCIES, fetchExchangeRates, convertCurrency } from '../lib/currencies';
 import Navbar from '../components/Navbar';
 import BottomNav from '../components/BottomNav';
 
@@ -37,6 +37,7 @@ export default function Convert() {
   };
 
   const fromWallet = wallets.find(w => w.currency === fromCurrency);
+  const fromBalance = fromWallet ? fromWallet.balance : 0;
   const amt = parseFloat(amount) || 0;
   const convertedAmount = rates ? convertCurrency(amt, fromCurrency, toCurrency, rates) : 0;
   const rate = rates ? convertCurrency(1, fromCurrency, toCurrency, rates) : 0;
@@ -52,19 +53,25 @@ export default function Convert() {
     setError('');
 
     if (!amt || amt <= 0) { setError('Enter a valid amount'); return; }
-    if (!fromWallet || fromWallet.balance < amt) { setError('Insufficient balance'); return; }
+    if (fromBalance < amt) { setError('Insufficient balance'); return; }
     if (fromCurrency === toCurrency) { setError('Select different currencies'); return; }
 
     setLoading(true);
 
     // Deduct from source wallet
-    await supabase
-      .from('currency_wallets')
-      .update({ balance: fromWallet.balance - amt })
-      .eq('user_id', profile.id)
-      .eq('currency', fromCurrency);
+    if (fromWallet) {
+      await supabase
+        .from('currency_wallets')
+        .update({ balance: fromWallet.balance - amt })
+        .eq('user_id', profile.id)
+        .eq('currency', fromCurrency);
+    } else {
+      await supabase
+        .from('currency_wallets')
+        .insert({ user_id: profile.id, currency: fromCurrency, balance: -amt });
+    }
 
-    // Add to target wallet (upsert)
+    // Add to target wallet
     const toWallet = wallets.find(w => w.currency === toCurrency);
     if (toWallet) {
       await supabase
@@ -108,7 +115,7 @@ export default function Convert() {
           </p>
           <p style={{ color: 'var(--text-muted)', marginBottom: 4 }}>to</p>
           <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 22, fontWeight: 700, color: 'var(--green)', marginBottom: 40 }}>
-            {CURRENCIES[toCurrency]?.symbol} {convertedAmount.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {toCurrency}
+            {CURRENCIES[toCurrency]?.symbol} {convertedAmount.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} {toCurrency}
           </p>
           <button className="btn-primary" onClick={() => { setSuccess(false); setAmount(''); }} style={{ width: '100%' }}>
             Convert Again
@@ -141,23 +148,19 @@ export default function Convert() {
             {/* From currency */}
             <div className="input-group">
               <label>From</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <select
-                  value={fromCurrency}
-                  onChange={(e) => setFromCurrency(e.target.value)}
-                  style={{
-                    flex: 1, padding: '12px', background: 'var(--surface2)',
-                    border: '1.5px solid var(--border)', borderRadius: 10,
-                    color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif',
-                    fontSize: 14, outline: 'none'
-                  }}
-                >
-                  {wallets.map(w => (
-                    <option key={w.currency} value={w.currency}>
-                      {CURRENCIES[w.currency]?.flag} {w.currency} — Balance: {CURRENCIES[w.currency]?.symbol}{Number(w.balance).toFixed(2)}
-                    </option>
-                  ))}
-                </select>
+              <select
+                value={fromCurrency}
+                onChange={(e) => setFromCurrency(e.target.value)}
+                style={{ width: '100%', padding: '12px', background: 'var(--surface2)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif', fontSize: 14, outline: 'none' }}
+              >
+                {Object.keys(CURRENCIES).map(code => (
+                  <option key={code} value={code}>
+                    {CURRENCIES[code]?.flag} {code} — {CURRENCIES[code]?.name}
+                  </option>
+                ))}
+              </select>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                Balance: {CURRENCIES[fromCurrency]?.symbol} {Number(fromBalance).toLocaleString('en', { minimumFractionDigits: 2 })}
               </div>
             </div>
 
@@ -178,11 +181,6 @@ export default function Convert() {
                   style={{ paddingLeft: 64 }}
                 />
               </div>
-              {fromWallet && (
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                  Available: {CURRENCIES[fromCurrency]?.symbol} {Number(fromWallet.balance).toLocaleString('en', { minimumFractionDigits: 2 })}
-                </div>
-              )}
             </div>
 
             {/* Swap button */}
@@ -207,16 +205,11 @@ export default function Convert() {
               <select
                 value={toCurrency}
                 onChange={(e) => setToCurrency(e.target.value)}
-                style={{
-                  width: '100%', padding: '12px', background: 'var(--surface2)',
-                  border: '1.5px solid var(--border)', borderRadius: 10,
-                  color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif',
-                  fontSize: 14, outline: 'none'
-                }}
+                style={{ width: '100%', padding: '12px', background: 'var(--surface2)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif', fontSize: 14, outline: 'none' }}
               >
                 {Object.keys(CURRENCIES).map(code => (
                   <option key={code} value={code}>
-                    {CURRENCIES[code].flag} {code} — {CURRENCIES[code].name}
+                    {CURRENCIES[code]?.flag} {code} — {CURRENCIES[code]?.name}
                   </option>
                 ))}
               </select>
@@ -249,4 +242,5 @@ export default function Convert() {
       <BottomNav />
     </div>
   );
-}
+                 }
+        
