@@ -44,7 +44,9 @@ export default function SendMoney() {
     ? convertCurrency(1, form.fromCurrency, form.receiveCurrency, rates)
     : 1;
 
-  // Lookup receiver when phone changes
+  const fromWallet = wallets.find(w => w.currency === form.fromCurrency);
+  const fromBalance = fromWallet ? fromWallet.balance : 0;
+
   const lookupReceiver = async (phone) => {
     if (phone.length >= 10) {
       const { data } = await supabase
@@ -64,16 +66,13 @@ export default function SendMoney() {
 
     if (!amount || amount <= 0) { setError('Enter a valid amount'); return; }
     if (amount < 10) { setError('Minimum send amount is KES 10'); return; }
-
-    const fromWallet = wallets.find(w => w.currency === form.fromCurrency);
-    if (!fromWallet || fromWallet.balance < total) {
+    if (fromBalance < total) {
       setError(`Insufficient ${form.fromCurrency} balance. Need ${total.toLocaleString()}`);
       return;
     }
 
     setLoading(true);
 
-    // Get receiver
     const { data: receiver } = await supabase
       .from('profiles')
       .select('id, full_name')
@@ -83,11 +82,17 @@ export default function SendMoney() {
     if (!receiver) { setError('Recipient not found on PesaYetu'); setLoading(false); return; }
 
     // Deduct from sender wallet
-    await supabase
-      .from('currency_wallets')
-      .update({ balance: fromWallet.balance - total })
-      .eq('user_id', profile.id)
-      .eq('currency', form.fromCurrency);
+    if (fromWallet) {
+      await supabase
+        .from('currency_wallets')
+        .update({ balance: fromWallet.balance - total })
+        .eq('user_id', profile.id)
+        .eq('currency', form.fromCurrency);
+    } else {
+      await supabase
+        .from('currency_wallets')
+        .insert({ user_id: profile.id, currency: form.fromCurrency, balance: -total });
+    }
 
     // Add to receiver wallet
     const { data: receiverWallet } = await supabase
@@ -144,7 +149,7 @@ export default function SendMoney() {
           </p>
           {charge > 0 && (
             <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 32 }}>
-              Fee charged: {formatCharge(charge)} {form.fromCurrency}
+              Fee: {formatCharge(charge)} {form.fromCurrency}
             </p>
           )}
           <button className="btn-primary" onClick={() => navigate('/')} style={{ width: '100%' }}>Back to Home</button>
@@ -168,7 +173,7 @@ export default function SendMoney() {
           <div className="form-card">
             {error && <div className="alert alert-error">{error}</div>}
 
-            {/* From currency */}
+            {/* Send From */}
             <div className="input-group">
               <label>Send From</label>
               <select
@@ -177,12 +182,15 @@ export default function SendMoney() {
                 onChange={handleChange}
                 style={{ width: '100%', padding: '12px', background: 'var(--surface2)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif', fontSize: 14, outline: 'none' }}
               >
-                {wallets.map(w => (
-                  <option key={w.currency} value={w.currency}>
-                    {CURRENCIES[w.currency]?.flag} {w.currency} — Balance: {CURRENCIES[w.currency]?.symbol}{Number(w.balance).toFixed(2)}
+                {Object.keys(CURRENCIES).map(code => (
+                  <option key={code} value={code}>
+                    {CURRENCIES[code]?.flag} {code} — {CURRENCIES[code]?.name}
                   </option>
                 ))}
               </select>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                Balance: {CURRENCIES[form.fromCurrency]?.symbol} {Number(fromBalance).toLocaleString('en', { minimumFractionDigits: 2 })}
+              </div>
             </div>
 
             {/* Recipient */}
@@ -216,7 +224,7 @@ export default function SendMoney() {
                   type="number"
                   name="amount"
                   placeholder="0.00"
-                  min="10"
+                  min="0"
                   step="any"
                   value={form.amount}
                   onChange={handleChange}
@@ -226,7 +234,7 @@ export default function SendMoney() {
               </div>
             </div>
 
-            {/* Receiver currency */}
+            {/* Receiver Gets In */}
             <div className="input-group">
               <label>Receiver Gets In</label>
               <select
@@ -237,7 +245,7 @@ export default function SendMoney() {
               >
                 {Object.keys(CURRENCIES).map(code => (
                   <option key={code} value={code}>
-                    {CURRENCIES[code].flag} {code} — {CURRENCIES[code].name}
+                    {CURRENCIES[code]?.flag} {code} — {CURRENCIES[code]?.name}
                   </option>
                 ))}
               </select>
@@ -287,4 +295,4 @@ export default function SendMoney() {
       <BottomNav />
     </div>
   );
-}
+            }
