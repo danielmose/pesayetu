@@ -1,13 +1,13 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Send, Wallet, ArrowLeftRight, Clock } from 'lucide-react';
+import { Home, Send, Wallet, ArrowLeftRight, Settings } from 'lucide-react';
 
 const items = [
   { path: '/', label: 'Home', icon: Home },
   { path: '/send', label: 'Send', icon: Send },
   { path: '/wallets', label: 'Wallets', icon: Wallet },
   { path: '/convert', label: 'Convert', icon: ArrowLeftRight },
-  { path: '/history', label: 'History', icon: Clock },
+  { path: '/settings', label: 'Settings', icon: Settings },
 ];
 
 export default function BottomNav() {
