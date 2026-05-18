@@ -10,6 +10,9 @@ import Withdraw from './pages/Withdraw';
 import History from './pages/History';
 import Wallets from './pages/Wallets';
 import Convert from './pages/Convert';
+import Settings from './pages/Settings';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import './index.css';
 
 const PrivateRoute = ({ children }) => {
@@ -38,6 +41,8 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
       <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
+      <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
       <Route path="/send" element={<PrivateRoute><SendMoney /></PrivateRoute>} />
       <Route path="/deposit" element={<PrivateRoute><Deposit /></PrivateRoute>} />
@@ -45,6 +50,7 @@ function AppRoutes() {
       <Route path="/history" element={<PrivateRoute><History /></PrivateRoute>} />
       <Route path="/wallets" element={<PrivateRoute><Wallets /></PrivateRoute>} />
       <Route path="/convert" element={<PrivateRoute><Convert /></PrivateRoute>} />
+      <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );
