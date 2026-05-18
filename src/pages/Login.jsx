@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Mail, Lock } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
@@ -8,6 +8,7 @@ export default function Login() {
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPass, setShowPass] = useState(false);
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
@@ -55,14 +56,28 @@ export default function Login() {
           <div className="input-wrapper">
             <Lock />
             <input
-              type="password"
+              type={showPass ? 'text' : 'password'}
               name="password"
               placeholder="••••••••"
               value={form.password}
               onChange={handleChange}
               required
+              style={{ paddingRight: 44 }}
             />
+            <button
+              type="button"
+              onClick={() => setShowPass(!showPass)}
+              style={{ position: 'absolute', right: 14, background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+            >
+              {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
           </div>
+        </div>
+
+        <div style={{ textAlign: 'right', marginTop: -8 }}>
+          <Link to="/forgot-password" style={{ fontSize: 13, color: 'var(--green)', textDecoration: 'none', fontWeight: 600 }}>
+            Forgot Password?
+          </Link>
         </div>
 
         <button type="submit" className="btn-primary" disabled={loading}>
@@ -76,3 +91,4 @@ export default function Login() {
     </div>
   );
 }
+
