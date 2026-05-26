@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { CURRENCIES, fetchExchangeRates, convertCurrency } from '../lib/currencies';
 import { getSendCharge, formatCharge } from '../lib/charges';
+import { verifyPin } from '../lib/pin';
 import Navbar from '../components/Navbar';
 import BottomNav from '../components/BottomNav';
 import PinModal from '../components/PinModal';
@@ -74,27 +75,15 @@ export default function SendMoney() {
       return;
     }
 
-    // Show PIN modal before proceeding
     setShowPin(true);
   };
 
   const handlePinConfirm = async (pin) => {
     setPinError('');
 
-    // Verify PIN against transaction_pin in profiles
-    const { data: profileData } = await supabase
-      .from('profiles')
-      .select('transaction_pin')
-      .eq('id', profile.id)
-      .single();
-
-    if (!profileData?.transaction_pin) {
-      setPinError('No PIN set. Please set a PIN in Settings.');
-      return;
-    }
-
-    if (profileData.transaction_pin !== pin) {
-      setPinError('Incorrect PIN. Try again.');
+    const result = await verifyPin(profile.id, pin, profile);
+    if (!result.success) {
+      setPinError(result.message);
       return;
     }
 
@@ -299,4 +288,4 @@ export default function SendMoney() {
       <BottomNav />
     </div>
   );
-      }
+        }
