@@ -86,7 +86,7 @@ export default function Withdraw() {
   const handlePinConfirm = async (pin) => {
     setPinError('');
 
-    const result = await verifyPin(profile.id, pin, profile);
+    const result = await verifyPin(profile.id, pin);
     if (!result.success) {
       setPinError(result.message);
       return;
@@ -133,20 +133,17 @@ export default function Withdraw() {
         return;
       }
 
-      // Deduct from currency_wallets
       await supabase
         .from('currency_wallets')
         .update({ balance: walletBalance - total })
         .eq('user_id', profile.id)
         .eq('currency', 'KES');
 
-      // Deduct from profiles.balance
       await supabase.rpc('withdraw_money', {
         p_user_id: profile.id,
         p_amount: total,
       });
 
-      // Record transaction
       await supabase.from('currency_transactions').insert({
         sender_id: profile.id,
         receiver_id: profile.id,
@@ -346,4 +343,4 @@ export default function Withdraw() {
       <BottomNav />
     </div>
   );
-                     }
+            }
