@@ -4,7 +4,6 @@ const MAX_ATTEMPTS = 3;
 const LOCK_MINUTES = 30;
 
 export async function verifyPin(userId, enteredPin) {
-  // Always fetch fresh profile data
   const { data: profile } = await supabase
     .from('profiles')
     .select('transaction_pin, pin_attempts, pin_locked_until')
@@ -13,7 +12,6 @@ export async function verifyPin(userId, enteredPin) {
 
   if (!profile) return { success: false, message: 'User not found.' };
 
-  // Check if locked
   if (profile.pin_locked_until) {
     const lockedUntil = new Date(profile.pin_locked_until);
     const now = new Date();
