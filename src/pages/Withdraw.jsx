@@ -4,6 +4,7 @@ import { ArrowLeft, CheckCircle, Phone, Building2, CreditCard } from 'lucide-rea
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { getWithdrawCharge, formatCharge } from '../lib/charges';
+import { verifyPin } from '../lib/pin';
 import Navbar from '../components/Navbar';
 import BottomNav from '../components/BottomNav';
 import PinModal from '../components/PinModal';
@@ -61,7 +62,7 @@ export default function Withdraw() {
       const data = await res.json();
       setKesUsdRate(data.rates.KES);
     } catch {
-      setKesUsdRate(130); // fallback
+      setKesUsdRate(130);
     }
   };
 
@@ -85,19 +86,9 @@ export default function Withdraw() {
   const handlePinConfirm = async (pin) => {
     setPinError('');
 
-    const { data: profileData } = await supabase
-      .from('profiles')
-      .select('transaction_pin')
-      .eq('id', profile.id)
-      .single();
-
-    if (!profileData?.transaction_pin) {
-      setPinError('No PIN set. Please set a PIN in Settings.');
-      return;
-    }
-
-    if (profileData.transaction_pin !== pin) {
-      setPinError('Incorrect PIN. Try again.');
+    const result = await verifyPin(profile.id, pin, profile);
+    if (!result.success) {
+      setPinError(result.message);
       return;
     }
 
@@ -106,7 +97,6 @@ export default function Withdraw() {
 
     try {
       const usdValue = kesUsdRate ? (amt / kesUsdRate).toFixed(2) : (amt / 130).toFixed(2);
-
       let chimoneyPayload = { valueInUSD: usdValue };
 
       if (method === 'mobilemoney') {
@@ -212,7 +202,6 @@ export default function Withdraw() {
           <span className="page-title">Withdraw Cash</span>
         </div>
 
-        {/* Balance */}
         <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px', marginBottom: 24, fontSize: 13, color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
           <span>Available</span>
           <span style={{ fontFamily: 'Space Mono, monospace', color: 'var(--green)', fontWeight: 700 }}>
@@ -220,7 +209,6 @@ export default function Withdraw() {
           </span>
         </div>
 
-        {/* Live rate indicator */}
         {kesUsdRate && (
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16, textAlign: 'right' }}>
             Live rate: 1 USD = KES {kesUsdRate.toFixed(2)}
@@ -231,23 +219,18 @@ export default function Withdraw() {
           <div className="form-card">
             {error && <div className="alert alert-error">{error}</div>}
 
-            {/* Method selector */}
             <div className="input-group">
               <label>Withdrawal Method</label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {METHODS.map(m => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => setMethod(m.id)}
+                  <button key={m.id} type="button" onClick={() => setMethod(m.id)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 12,
                       padding: '12px 16px', borderRadius: 10, cursor: 'pointer',
                       background: method === m.id ? 'rgba(0,200,100,0.08)' : 'var(--surface2)',
                       border: method === m.id ? '2px solid var(--green)' : '1.5px solid var(--border)',
                       color: 'var(--text)', textAlign: 'left',
-                    }}
-                  >
+                    }}>
                     <span style={{ color: method === m.id ? 'var(--green)' : 'var(--text-muted)' }}>{m.icon}</span>
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 14 }}>{m.label}</div>
@@ -258,7 +241,6 @@ export default function Withdraw() {
               </div>
             </div>
 
-            {/* Method-specific fields */}
             {method === 'mobilemoney' && (
               <div className="input-group">
                 <label>Phone Number</label>
@@ -302,7 +284,6 @@ export default function Withdraw() {
               </div>
             )}
 
-            {/* Amount */}
             <div className="input-group">
               <label>Amount (KES)</label>
               <div className="amount-input-wrapper">
@@ -318,7 +299,6 @@ export default function Withdraw() {
               )}
             </div>
 
-            {/* Presets */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
               {PRESETS.map(p => (
                 <button key={p} type="button" className="btn-secondary"
@@ -328,7 +308,6 @@ export default function Withdraw() {
               ))}
             </div>
 
-            {/* Breakdown */}
             {amt > 0 && (
               <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', fontSize: 13 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
