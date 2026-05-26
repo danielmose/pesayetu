@@ -81,7 +81,7 @@ export default function SendMoney() {
   const handlePinConfirm = async (pin) => {
     setPinError('');
 
-    const result = await verifyPin(profile.id, pin, profile);
+    const result = await verifyPin(profile.id, pin);
     if (!result.success) {
       setPinError(result.message);
       return;
@@ -98,7 +98,6 @@ export default function SendMoney() {
 
     if (!receiver) { setError('Recipient not found on PesaYetu'); setLoading(false); return; }
 
-    // Deduct from sender wallet
     if (fromWallet) {
       await supabase
         .from('currency_wallets')
@@ -111,7 +110,6 @@ export default function SendMoney() {
         .insert({ user_id: profile.id, currency: form.fromCurrency, balance: -total });
     }
 
-    // Add to receiver wallet
     const { data: receiverWallet } = await supabase
       .from('currency_wallets')
       .select('*')
@@ -131,7 +129,6 @@ export default function SendMoney() {
         .insert({ user_id: receiver.id, currency: form.receiveCurrency, balance: receiverGets });
     }
 
-    // Record transaction
     await supabase.from('currency_transactions').insert({
       sender_id: profile.id,
       receiver_id: receiver.id,
@@ -288,4 +285,4 @@ export default function SendMoney() {
       <BottomNav />
     </div>
   );
-        }
+                }
