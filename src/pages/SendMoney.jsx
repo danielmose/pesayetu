@@ -7,6 +7,7 @@ import { CURRENCIES, fetchExchangeRates, convertCurrency } from '../lib/currenci
 import { getSendCharge, formatCharge } from '../lib/charges';
 import Navbar from '../components/Navbar';
 import BottomNav from '../components/BottomNav';
+import PinModal from '../components/PinModal';
 
 export default function SendMoney() {
   const { profile, refreshProfile } = useAuth();
@@ -18,6 +19,8 @@ export default function SendMoney() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
   const [receiverInfo, setReceiverInfo] = useState(null);
+  const [showPin, setShowPin] = useState(false);
+  const [pinError, setPinError] = useState('');
 
   useEffect(() => {
     fetchWallets();
@@ -71,6 +74,31 @@ export default function SendMoney() {
       return;
     }
 
+    // Show PIN modal before proceeding
+    setShowPin(true);
+  };
+
+  const handlePinConfirm = async (pin) => {
+    setPinError('');
+
+    // Verify PIN against transaction_pin in profiles
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('transaction_pin')
+      .eq('id', profile.id)
+      .single();
+
+    if (!profileData?.transaction_pin) {
+      setPinError('No PIN set. Please set a PIN in Settings.');
+      return;
+    }
+
+    if (profileData.transaction_pin !== pin) {
+      setPinError('Incorrect PIN. Try again.');
+      return;
+    }
+
+    setShowPin(false);
     setLoading(true);
 
     const { data: receiver } = await supabase
@@ -173,19 +201,12 @@ export default function SendMoney() {
           <div className="form-card">
             {error && <div className="alert alert-error">{error}</div>}
 
-            {/* Send From */}
             <div className="input-group">
               <label>Send From</label>
-              <select
-                name="fromCurrency"
-                value={form.fromCurrency}
-                onChange={handleChange}
-                style={{ width: '100%', padding: '12px', background: 'var(--surface2)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif', fontSize: 14, outline: 'none' }}
-              >
+              <select name="fromCurrency" value={form.fromCurrency} onChange={handleChange}
+                style={{ width: '100%', padding: '12px', background: 'var(--surface2)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif', fontSize: 14, outline: 'none' }}>
                 {Object.keys(CURRENCIES).map(code => (
-                  <option key={code} value={code}>
-                    {CURRENCIES[code]?.flag} {code} — {CURRENCIES[code]?.name}
-                  </option>
+                  <option key={code} value={code}>{CURRENCIES[code]?.flag} {code} — {CURRENCIES[code]?.name}</option>
                 ))}
               </select>
               <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
@@ -193,19 +214,12 @@ export default function SendMoney() {
               </div>
             </div>
 
-            {/* Recipient */}
             <div className="input-group">
               <label>Recipient Phone</label>
               <div className="input-wrapper">
                 <Phone />
-                <input
-                  type="tel"
-                  name="phone"
-                  placeholder="0712345678"
-                  value={form.phone}
-                  onChange={(e) => { handleChange(e); lookupReceiver(e.target.value); }}
-                  required
-                />
+                <input type="tel" name="phone" placeholder="0712345678" value={form.phone}
+                  onChange={(e) => { handleChange(e); lookupReceiver(e.target.value); }} required />
               </div>
               {receiverInfo && (
                 <div style={{ fontSize: 12, color: 'var(--green)', marginTop: 4, fontWeight: 600 }}>
@@ -214,44 +228,25 @@ export default function SendMoney() {
               )}
             </div>
 
-            {/* Amount */}
             <div className="input-group">
               <label>Amount ({form.fromCurrency})</label>
               <div className="amount-input-wrapper">
                 <span className="amount-prefix" style={{ fontSize: 14 }}>{CURRENCIES[form.fromCurrency]?.symbol}</span>
-                <input
-                  className="amount-input"
-                  type="number"
-                  name="amount"
-                  placeholder="0.00"
-                  min="0"
-                  step="any"
-                  value={form.amount}
-                  onChange={handleChange}
-                  required
-                  style={{ paddingLeft: 64 }}
-                />
+                <input className="amount-input" type="number" name="amount" placeholder="0.00"
+                  min="0" step="any" value={form.amount} onChange={handleChange} required style={{ paddingLeft: 64 }} />
               </div>
             </div>
 
-            {/* Receiver Gets In */}
             <div className="input-group">
               <label>Receiver Gets In</label>
-              <select
-                name="receiveCurrency"
-                value={form.receiveCurrency}
-                onChange={handleChange}
-                style={{ width: '100%', padding: '12px', background: 'var(--surface2)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif', fontSize: 14, outline: 'none' }}
-              >
+              <select name="receiveCurrency" value={form.receiveCurrency} onChange={handleChange}
+                style={{ width: '100%', padding: '12px', background: 'var(--surface2)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif', fontSize: 14, outline: 'none' }}>
                 {Object.keys(CURRENCIES).map(code => (
-                  <option key={code} value={code}>
-                    {CURRENCIES[code]?.flag} {code} — {CURRENCIES[code]?.name}
-                  </option>
+                  <option key={code} value={code}>{CURRENCIES[code]?.flag} {code} — {CURRENCIES[code]?.name}</option>
                 ))}
               </select>
             </div>
 
-            {/* Breakdown */}
             {amount > 0 && (
               <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', fontSize: 13, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -277,7 +272,6 @@ export default function SendMoney() {
               </div>
             )}
 
-            {/* Note */}
             <div className="input-group">
               <label>Note (Optional)</label>
               <div className="input-wrapper">
@@ -292,7 +286,17 @@ export default function SendMoney() {
           </div>
         </form>
       </div>
+
+      {showPin && (
+        <PinModal
+          title="Confirm Send"
+          error={pinError}
+          onConfirm={handlePinConfirm}
+          onCancel={() => { setShowPin(false); setPinError(''); }}
+        />
+      )}
+
       <BottomNav />
     </div>
   );
-            }
+      }
