@@ -17,14 +17,18 @@ export default function History() {
 
   useEffect(() => {
     fetchAll();
-  }, []);
+  }, [profile?.id]);
 
   const fetchAll = async () => {
+    if (!profile?.id) return;
+
     const { data, error } = await supabase
       .from('transactions')
       .select('*, sender:sender_id(full_name), receiver:receiver_id(full_name)')
+      .or(`sender_id.eq.${profile.id},receiver_id.eq.${profile.id}`)
       .order('created_at', { ascending: false })
       .limit(100);
+
     if (!error) setTransactions(data || []);
     setLoading(false);
   };
