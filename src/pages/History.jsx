@@ -24,7 +24,11 @@ export default function History() {
 
     const { data, error } = await supabase
       .from('transactions')
-      .select('*, sender:sender_id(full_name), receiver:receiver_id(full_name)')
+      .select(`
+        *,
+        sender:sender_id(id, full_name, phone),
+        receiver:receiver_id(id, full_name, phone)
+      `)
       .or(`sender_id.eq.${profile.id},receiver_id.eq.${profile.id}`)
       .order('created_at', { ascending: false })
       .limit(100);
@@ -46,7 +50,6 @@ export default function History() {
           <span className="page-title">Transaction History</span>
         </div>
 
-        {/* Filter tabs */}
         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, marginBottom: 20 }}>
           {FILTERS.map(f => (
             <button
