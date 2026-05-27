@@ -11,10 +11,12 @@ export default function Dashboard() {
   const { profile, refreshProfile } = useAuth();
   const [transactions, setTransactions] = useState([]);
   const [txLoading, setTxLoading] = useState(true);
+  const [wallets, setWallets] = useState([]);
 
   useEffect(() => {
     refreshProfile();
     fetchTransactions();
+    fetchWallets();
   }, []);
 
   const fetchTransactions = async () => {
@@ -27,14 +29,26 @@ export default function Dashboard() {
     setTxLoading(false);
   };
 
+  const fetchWallets = async () => {
+    if (!profile?.id) return;
+    const { data } = await supabase
+      .from('currency_wallets')
+      .select('*')
+      .eq('user_id', profile.id);
+    setWallets(data || []);
+  };
+
   const currency = profile?.currency || 'KES';
   const dialCode = profile?.dial_code || '';
+
+  // ── Read balance from currency_wallets (single source of truth) ──
+  const activeWallet = wallets.find(w => w.currency === currency);
+  const displayBalance = activeWallet ? activeWallet.balance : (profile?.balance || 0);
 
   const formatBalance = (bal) => {
     return Number(bal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
   };
 
-  // Show dial code prefix + local number, or just the number if no dial code
   const displayPhone = () => {
     if (!profile?.phone) return '';
     if (dialCode && !profile.phone.startsWith('+')) {
@@ -53,7 +67,7 @@ export default function Dashboard() {
           <div className="balance-label">Available Balance</div>
           <div className="balance-amount">
             <span className="balance-currency">{currency} </span>
-            {formatBalance(profile?.balance)}
+            {formatBalance(displayBalance)}
           </div>
           <div className="balance-phone">{displayPhone()}</div>
         </div>
