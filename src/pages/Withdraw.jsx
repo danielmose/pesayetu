@@ -264,7 +264,6 @@ export default function Withdraw() {
   const { profile, refreshProfile } = useAuth();
   const navigate = useNavigate();
 
-  // ── Dynamic currency from profile ──────────────────────────────────────────
   const currency = profile?.currency || 'KES';
   const currencySymbol = currency === 'KES' ? 'KSh' : currency;
 
@@ -289,25 +288,18 @@ export default function Withdraw() {
   const amtInUSD = kesUsdRate ? (amt / kesUsdRate).toFixed(2) : null;
   const fullPhone = phone ? `${countryCode}${phone.replace(/^0/, '')}` : '';
 
-  // ── On mount: refresh profile + fetch supporting data ──────────────────────
   useEffect(() => {
     refreshProfile();
     fetchWalletBalance();
     fetchLiveRate();
   }, []);
 
-  // ── Whenever profile updates, sync dial code ───────────────────────────────
   useEffect(() => {
-    if (profile?.dial_code) {
-      setCountryCode(profile.dial_code);
-    }
+    if (profile?.dial_code) setCountryCode(profile.dial_code);
   }, [profile]);
 
-  // ── Re-fetch wallet balance when currency changes ──────────────────────────
   useEffect(() => {
-    if (profile?.id) {
-      fetchWalletBalance();
-    }
+    if (profile?.id) fetchWalletBalance();
   }, [currency]);
 
   const fetchWalletBalance = async () => {
@@ -315,7 +307,7 @@ export default function Withdraw() {
       .from('currency_wallets')
       .select('balance')
       .eq('user_id', profile.id)
-      .eq('currency', currency)   // ← dynamic currency, not hardcoded 'KES'
+      .eq('currency', currency)
       .single();
     setWalletBalance(data?.balance || 0);
   };
@@ -419,18 +411,27 @@ export default function Withdraw() {
         return;
       }
 
-      await supabase.from('currency_wallets').update({ balance: walletBalance - total }).eq('user_id', profile.id).eq('currency', currency);
+      // Deduct from wallet
+      await supabase.from('currency_wallets')
+        .update({ balance: walletBalance - total })
+        .eq('user_id', profile.id)
+        .eq('currency', currency);
+
+      // Deduct from profiles.balance
       await supabase.rpc('withdraw_money', { p_user_id: profile.id, p_amount: total });
-      await supabase.from('currency_transactions').insert({
+
+      // Record in transactions table ✅
+      await supabase.from('transactions').insert({
         sender_id: profile.id,
         receiver_id: profile.id,
-        send_amount: amt,
-        send_currency: currency,       // ← dynamic
+        amount: total,
+        currency: currency,
         receive_amount: amt,
-        receive_currency: currency,    // ← dynamic
+        receive_currency: currency,
         exchange_rate: 1,
+        charge: charge,
         type: 'withdraw',
-        note: method,
+        note: `${method} withdrawal via Chimoney`,
       });
 
       await refreshProfile();
@@ -480,7 +481,6 @@ export default function Withdraw() {
           <div className="form-card">
             {error && <div className="alert alert-error">{error}</div>}
 
-            {/* Method selector */}
             <div className="input-group">
               <label>Withdrawal Method</label>
               <div style={{ display: 'flex', gap: 8 }}>
@@ -495,7 +495,6 @@ export default function Withdraw() {
               </div>
             </div>
 
-            {/* Amount */}
             <div className="input-group">
               <label>Amount ({currency})</label>
               <div className="amount-input-wrapper">
@@ -508,7 +507,6 @@ export default function Withdraw() {
               </div>
             </div>
 
-            {/* Preset amounts */}
             <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
               {PRESETS.map(p => (
                 <button key={p} type="button" onClick={() => setAmount(String(p))}
@@ -518,7 +516,6 @@ export default function Withdraw() {
               ))}
             </div>
 
-            {/* Mobile Money fields */}
             {method === 'mobilemoney' && (
               <div className="input-group">
                 <label>Mobile Money Number</label>
@@ -537,7 +534,6 @@ export default function Withdraw() {
               </div>
             )}
 
-            {/* Bank fields */}
             {method === 'bank' && (
               <>
                 <div className="input-group">
@@ -557,7 +553,6 @@ export default function Withdraw() {
               </>
             )}
 
-            {/* Card fields */}
             {method === 'card' && (
               <div className="input-group">
                 <label>Card Number</label>
@@ -568,7 +563,6 @@ export default function Withdraw() {
               </div>
             )}
 
-            {/* Summary */}
             {amt > 0 && (
               <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', fontSize: 13, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
