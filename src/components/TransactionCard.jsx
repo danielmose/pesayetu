@@ -17,19 +17,27 @@ export default function TransactionCard({ tx, currentUserId }) {
   const sign = isPositive ? '+' : '-';
   const Icon = icons[tx.type] || ArrowUpRight;
 
-  const amount = isSend || isWithdraw
+  // ✅ FIXED: deposit & withdraw use `amount` and `currency`, not send/receive variants
+  const amount = isSend
     ? tx.send_amount
-    : tx.receive_amount;
+    : isReceive
+    ? tx.receive_amount
+    : tx.amount; // deposit & withdraw
 
-  const currency = isSend || isWithdraw
+  const currency = isSend
     ? tx.send_currency
-    : tx.receive_currency;
+    : isReceive
+    ? tx.receive_currency
+    : tx.currency; // deposit & withdraw
 
   const formatDate = (dateStr) => {
     const d = new Date(dateStr);
     return d.toLocaleDateString('en-KE', {
-      day: 'numeric', month: 'short', year: 'numeric',
-      hour: '2-digit', minute: '2-digit'
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
     });
   };
 
@@ -51,8 +59,10 @@ export default function TransactionCard({ tx, currentUserId }) {
         <div className="tx-date">{formatDate(tx.created_at)}</div>
       </div>
       <div>
+        {/* ✅ FIXED: fallback to 0 and '?' so NaN/undefined never renders */}
         <div className={`tx-amount ${isPositive ? 'positive' : 'negative'}`}>
-          {sign} {currency} {Number(amount).toLocaleString('en-KE', { minimumFractionDigits: 2 })}
+          {sign} {currency ?? '?'}{' '}
+          {Number(amount ?? 0).toLocaleString('en-KE', { minimumFractionDigits: 2 })}
         </div>
       </div>
     </div>
