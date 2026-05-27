@@ -295,11 +295,14 @@ export default function Settings() {
     setDetectingLocation(false);
   };
 
+  // ── FIXED: also creates wallet for new currency if it doesn't exist ────────
   const handleSaveCountry = async (e) => {
     e.preventDefault();
     setError('');
     if (!selectedCountry) { setError('Please select a country'); return; }
     setLoading(true);
+
+    // 1. Update profile
     const { error: err } = await supabase
       .from('profiles')
       .update({
@@ -310,11 +313,24 @@ export default function Settings() {
       })
       .eq('id', profile.id);
 
-    if (err) setError(err.message);
-    else {
-      setSuccess('Country updated successfully!');
-      setSection(null);
+    if (err) { setError(err.message); setLoading(false); return; }
+
+    // 2. Create wallet for new currency if it doesn't exist yet
+    const { data: existingWallet } = await supabase
+      .from('currency_wallets')
+      .select('id')
+      .eq('user_id', profile.id)
+      .eq('currency', selectedCountry.currency)
+      .single();
+
+    if (!existingWallet) {
+      await supabase
+        .from('currency_wallets')
+        .insert({ user_id: profile.id, currency: selectedCountry.currency, balance: 0 });
     }
+
+    setSuccess('Country updated successfully!');
+    setSection(null);
     setLoading(false);
   };
 
@@ -457,7 +473,6 @@ export default function Settings() {
           </div>
 
           {profile?.country && section !== 'country' ? (
-            /* Already set — show current + edit button */
             <div style={{ padding: '14px 20px' }}>
               <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -485,7 +500,6 @@ export default function Settings() {
               </div>
             </div>
           ) : section !== 'country' ? (
-            /* Not set yet */
             <button
               onClick={() => { setSection('country'); setError(''); setSuccess(''); }}
               style={{ ...rowBtnStyle, borderBottom: 'none' }}
@@ -500,7 +514,6 @@ export default function Settings() {
             <div style={{ padding: 20 }}>
               {error && <div className="alert alert-error" style={{ marginBottom: 12 }}>{error}</div>}
 
-              {/* Auto-detect */}
               <button
                 type="button"
                 onClick={detectLocation}
@@ -526,7 +539,6 @@ export default function Settings() {
                 <div style={{ fontSize: 12, color: '#f87171', marginBottom: 8, textAlign: 'center' }}>{locationError}</div>
               )}
 
-              {/* Dropdown trigger */}
               <div
                 onClick={() => setDropdownOpen(!dropdownOpen)}
                 style={{
@@ -553,7 +565,6 @@ export default function Settings() {
                 <ChevronDown size={16} style={{ color: 'var(--text-muted)', transform: dropdownOpen ? 'rotate(180deg)' : 'none', transition: '0.2s' }} />
               </div>
 
-              {/* Dropdown list */}
               {dropdownOpen && (
                 <div style={{
                   borderRadius: 12, border: '1px solid var(--border)',
@@ -601,7 +612,6 @@ export default function Settings() {
                 </div>
               )}
 
-              {/* Info card */}
               {selectedCountry && (
                 <div style={{
                   padding: '12px 16px', borderRadius: 12, marginBottom: 14,
