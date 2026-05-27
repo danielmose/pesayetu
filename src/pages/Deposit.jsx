@@ -17,7 +17,6 @@ export default function Deposit() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
-  // ── Sync profile on mount ──────────────────────────────────────────────────
   useEffect(() => {
     refreshProfile();
   }, []);
@@ -32,13 +31,31 @@ export default function Deposit() {
     if (!amt || amt < 10) { setError(`Minimum deposit is ${currencySymbol} 10`); return; }
 
     setLoading(true);
+
     const { data, error: fnError } = await supabase.rpc('deposit_money', {
       p_user_id: profile.id,
       p_amount: amt,
     });
-    if (fnError) setError(fnError.message);
-    else if (!data.success) setError(data.message);
-    else { await refreshProfile(); setSuccess(true); }
+
+    if (fnError) { setError(fnError.message); setLoading(false); return; }
+    if (!data.success) { setError(data.message); setLoading(false); return; }
+
+    // Record transaction
+    await supabase.from('transactions').insert({
+      sender_id: profile.id,
+      receiver_id: profile.id,
+      amount: amt,
+      currency: currency,
+      receive_amount: amt,
+      receive_currency: currency,
+      exchange_rate: 1,
+      charge: 0,
+      type: 'deposit',
+      note: 'Wallet deposit',
+    });
+
+    await refreshProfile();
+    setSuccess(true);
     setLoading(false);
   };
 
@@ -92,16 +109,11 @@ export default function Deposit() {
               </div>
             </div>
 
-            {/* Presets */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
               {PRESETS.map(p => (
-                <button
-                  key={p}
-                  type="button"
-                  className="btn-secondary"
+                <button key={p} type="button" className="btn-secondary"
                   style={{ padding: '10px 4px', fontSize: 13 }}
-                  onClick={() => setAmount(String(p))}
-                >
+                  onClick={() => setAmount(String(p))}>
                   {p.toLocaleString()}
                 </button>
               ))}
