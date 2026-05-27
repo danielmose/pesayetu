@@ -8,27 +8,37 @@ const icons = {
   withdraw: MinusCircle,
 };
 
-const labels = {
-  send: 'Sent',
-  receive: 'Received',
-  deposit: 'Deposit',
-  withdraw: 'Withdrawal',
-};
-
 export default function TransactionCard({ tx, currentUserId }) {
-  const Icon = icons[tx.type] || ArrowUpRight;
-  const isPositive = tx.type === 'receive' || tx.type === 'deposit';
+  const isSend = tx.type === 'send';
+  const isDeposit = tx.type === 'deposit';
+  const isWithdraw = tx.type === 'withdraw';
+  const isReceive = tx.type === 'receive';
+  const isPositive = isReceive || isDeposit;
   const sign = isPositive ? '+' : '-';
+  const Icon = icons[tx.type] || ArrowUpRight;
+
+  const amount = isSend || isWithdraw
+    ? tx.send_amount
+    : tx.receive_amount;
+
+  const currency = isSend || isWithdraw
+    ? tx.send_currency
+    : tx.receive_currency;
 
   const formatDate = (dateStr) => {
     const d = new Date(dateStr);
-    return d.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleDateString('en-KE', {
+      day: 'numeric', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
   };
 
   const getLabel = () => {
-    if (tx.type === 'send') return `To: ${tx.receiver?.full_name || tx.receiver_phone || 'Unknown'}`;
-    if (tx.type === 'receive') return `From: ${tx.sender?.full_name || 'Unknown'}`;
-    return labels[tx.type];
+    if (isSend) return `To: ${tx.receiver?.full_name || 'Unknown'}`;
+    if (isReceive) return `From: ${tx.sender?.full_name || 'Unknown'}`;
+    if (isDeposit) return 'Deposit';
+    if (isWithdraw) return 'Withdrawal';
+    return tx.type;
   };
 
   return (
@@ -42,9 +52,8 @@ export default function TransactionCard({ tx, currentUserId }) {
       </div>
       <div>
         <div className={`tx-amount ${isPositive ? 'positive' : 'negative'}`}>
-          {sign} KES {Number(tx.amount).toLocaleString('en-KE', { minimumFractionDigits: 2 })}
+          {sign} {currency} {Number(amount).toLocaleString('en-KE', { minimumFractionDigits: 2 })}
         </div>
-        <div className="tx-ref">{tx.reference}</div>
       </div>
     </div>
   );
