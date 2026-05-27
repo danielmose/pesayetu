@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, CheckCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { CURRENCIES } from '../lib/currencies';
 import Navbar from '../components/Navbar';
 import BottomNav from '../components/BottomNav';
 
@@ -16,11 +17,19 @@ export default function Deposit() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
+  // ── Sync profile on mount ──────────────────────────────────────────────────
+  useEffect(() => {
+    refreshProfile();
+  }, []);
+
+  const currency = profile?.currency || 'KES';
+  const currencySymbol = CURRENCIES[currency]?.symbol || currency;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     const amt = parseFloat(amount);
-    if (!amt || amt < 10) { setError('Minimum deposit is KES 10'); return; }
+    if (!amt || amt < 10) { setError(`Minimum deposit is ${currencySymbol} 10`); return; }
 
     setLoading(true);
     const { data, error: fnError } = await supabase.rpc('deposit_money', {
@@ -40,9 +49,11 @@ export default function Deposit() {
         <div className="inner-page" style={{ textAlign: 'center', paddingTop: 60 }}>
           <div style={{ color: 'var(--gold)', marginBottom: 20 }}><CheckCircle size={72} /></div>
           <h2 style={{ fontSize: 24, fontWeight: 800, marginBottom: 8 }}>Deposit Successful!</h2>
-          <p style={{ color: 'var(--text-muted)', marginBottom: 4 }}>KES {Number(amount).toLocaleString()} added to your wallet</p>
+          <p style={{ color: 'var(--text-muted)', marginBottom: 4 }}>
+            {currencySymbol} {Number(amount).toLocaleString()} added to your wallet
+          </p>
           <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 28, fontWeight: 700, color: 'var(--green)', margin: '20px 0 40px' }}>
-            KES {Number(profile.balance).toLocaleString('en-KE', { minimumFractionDigits: 2 })}
+            {currencySymbol} {Number(profile.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </p>
           <button className="btn-primary" onClick={() => navigate('/')} style={{ width: '100%' }}>Back to Home</button>
         </div>
@@ -65,9 +76,9 @@ export default function Deposit() {
             {error && <div className="alert alert-error">{error}</div>}
 
             <div className="input-group">
-              <label>Amount (KES)</label>
+              <label>Amount ({currency})</label>
               <div className="amount-input-wrapper">
-                <span className="amount-prefix">KES</span>
+                <span className="amount-prefix">{currencySymbol}</span>
                 <input
                   className="amount-input"
                   type="number"
@@ -97,7 +108,7 @@ export default function Deposit() {
             </div>
 
             <button type="submit" className="btn-primary" disabled={loading}>
-              {loading ? 'Processing...' : `Deposit KES ${amount || '0'}`}
+              {loading ? 'Processing...' : `Deposit ${currencySymbol} ${amount || '0'}`}
             </button>
           </div>
         </form>
