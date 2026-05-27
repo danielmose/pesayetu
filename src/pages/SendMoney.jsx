@@ -5,7 +5,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { CURRENCIES, fetchExchangeRates, convertCurrency } from '../lib/currencies';
 import { getSendCharge, formatCharge } from '../lib/charges';
-import { verifyPin } from '../lib/pin';
 import Navbar from '../components/Navbar';
 import BottomNav from '../components/BottomNav';
 import PinModal from '../components/PinModal';
@@ -81,11 +80,48 @@ export default function SendMoney() {
   const handlePinConfirm = async (pin) => {
     setPinError('');
 
-    const result = await verifyPin(profile.id, pin);
-    if (!result.success) {
-      setPinError(result.message);
+    // Check PIN lockout
+    if (profile.pin_locked_until) {
+      const lockedUntil = new Date(profile.pin_locked_until);
+      const now = new Date();
+      if (now < lockedUntil) {
+        const remaining = Math.ceil((lockedUntil - now) / 60000);
+        setPinError(`PIN locked. Try again in ${remaining} minute${remaining > 1 ? 's' : ''}.`);
+        return;
+      }
+    }
+
+    // Check PIN set
+    if (!profile.transaction_pin) {
+      setPinError('No PIN set. Please set a PIN in Settings.');
       return;
     }
+
+    // Verify PIN
+    const isCorrect = btoa(pin) === profile.transaction_pin;
+
+    if (!isCorrect) {
+      const attempts = (profile.pin_attempts || 0) + 1;
+      const MAX_ATTEMPTS = 3;
+      const LOCK_MINUTES = 30;
+
+      if (attempts >= MAX_ATTEMPTS) {
+        const lockUntil = new Date(Date.now() + LOCK_MINUTES * 60 * 1000);
+        await supabase.from('profiles').update({
+          pin_attempts: attempts,
+          pin_locked_until: lockUntil.toISOString()
+        }).eq('id', profile.id);
+        setPinError(`Incorrect PIN. Account locked for ${LOCK_MINUTES} minutes.`);
+      } else {
+        await supabase.from('profiles').update({ pin_attempts: attempts }).eq('id', profile.id);
+        const remaining = MAX_ATTEMPTS - attempts;
+        setPinError(`Incorrect PIN. ${remaining} attempt${remaining > 1 ? 's' : ''} remaining.`);
+      }
+      return;
+    }
+
+    // PIN correct — reset attempts
+    await supabase.from('profiles').update({ pin_attempts: 0, pin_locked_until: null }).eq('id', profile.id);
 
     setShowPin(false);
     setLoading(true);
@@ -141,6 +177,7 @@ export default function SendMoney() {
       note: form.note || null,
     });
 
+    await refreshProfile();
     await fetchWallets();
     setSuccess({ receiverName: receiver.full_name, receiverGets, receiveCurrency: form.receiveCurrency });
     setLoading(false);
@@ -285,4 +322,5 @@ export default function SendMoney() {
       <BottomNav />
     </div>
   );
-                }
+        }
+                
