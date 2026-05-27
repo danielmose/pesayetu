@@ -222,6 +222,7 @@ export default function SendMoney() {
   useEffect(() => {
     fetchWallets();
     fetchExchangeRates().then(setRates);
+    detectLocation();
   }, []);
 
   const fetchWallets = async () => {
@@ -230,6 +231,22 @@ export default function SendMoney() {
       .select('*')
       .eq('user_id', profile.id);
     setWallets(data || []);
+  };
+
+  const detectLocation = async () => {
+    try {
+      const res = await fetch('https://ipapi.co/json/');
+      const data = await res.json();
+      const detected = COUNTRY_CODES.find(c => c.name === data.country_name);
+      if (detected) {
+        setCountryCode(detected.code);
+      }
+      if (CURRENCIES[data.currency]) {
+        setForm(f => ({ ...f, fromCurrency: data.currency, receiveCurrency: data.currency }));
+      }
+    } catch {
+      // keep defaults if detection fails
+    }
   };
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
