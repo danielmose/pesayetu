@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { User, Phone, Mail, Lock, Globe, ChevronDown, MapPin, Loader } from 'lucide-react';
+import { User, Phone, Mail, Lock, Globe, ChevronDown, MapPin, Loader, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 
@@ -207,6 +207,7 @@ export default function Register() {
   const { register } = useAuth();
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({ fullName: '', phone: '', email: '', password: '' });
+  const [showPassword, setShowPassword] = useState(false);
   const [selectedCountry, setSelectedCountry] = useState(null);
   const [countrySearch, setCountrySearch] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -228,7 +229,6 @@ export default function Register() {
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
-  // Auto-detect country via IP geolocation (no GPS needed)
   const detectLocation = async () => {
     setDetectingLocation(true);
     setLocationError('');
@@ -236,7 +236,6 @@ export default function Register() {
       const res = await fetch('https://ipapi.co/json/');
       const data = await res.json();
       if (data.country_name) {
-        // Try exact match first, then partial
         const match = COUNTRIES.find(c =>
           c.name.toLowerCase() === data.country_name.toLowerCase()
         ) || COUNTRIES.find(c =>
@@ -282,20 +281,14 @@ export default function Register() {
   const handleStep1 = (e) => {
     e.preventDefault();
     setError('');
-    if (form.password.length < 6) {
-      setError('Password must be at least 6 characters');
-      return;
-    }
+    if (form.password.length < 6) { setError('Password must be at least 6 characters'); return; }
     setStep(2);
   };
 
   const handleStep2 = (e) => {
     e.preventDefault();
     setError('');
-    if (!selectedCountry) {
-      setError('Please select your country');
-      return;
-    }
+    if (!selectedCountry) { setError('Please select your country'); return; }
     const phone = form.phone.replace(/\s/g, '');
     const dialNoPlus = selectedCountry.dialCode.replace('+', '').replace('-', '');
     const localPattern = new RegExp(`^(0\\d{7,11}|\\+${dialNoPlus}\\d{6,11}|${dialNoPlus}\\d{6,11})$`);
@@ -334,20 +327,19 @@ export default function Register() {
     if (regError) { setError(regError.message); setLoading(false); return; }
 
     if (data.user) {
-      await supabase
-        .from('profiles')
-        .update({
-          transaction_pin: btoa(pinStr),
-          country: selectedCountry.name,
-          dial_code: selectedCountry.dialCode,
-          currency: selectedCountry.currency,
-          currency_symbol: selectedCountry.symbol,
-        })
-        .eq('id', data.user.id);
+      await supabase.from('profiles').update({
+        transaction_pin: btoa(pinStr),
+        country: selectedCountry.name,
+        dial_code: selectedCountry.dialCode,
+        currency: selectedCountry.currency,
+        currency_symbol: selectedCountry.symbol,
+      }).eq('id', data.user.id);
 
-      await supabase
-        .from('currency_wallets')
-        .insert({ user_id: data.user.id, currency: selectedCountry.currency, balance: 0 });
+      await supabase.from('currency_wallets').insert({
+        user_id: data.user.id,
+        currency: selectedCountry.currency,
+        balance: 0
+      });
     }
 
     setSuccess('Account created! Check your email to confirm, then sign in.');
@@ -370,7 +362,6 @@ export default function Register() {
         <div className="logo-text">Pesa<span>Yetu</span></div>
       </div>
 
-      {/* Progress — 3 steps */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 32 }}>
         {[1, 2, 3].map(s => (
           <div key={s} style={{
@@ -381,7 +372,7 @@ export default function Register() {
         ))}
       </div>
 
-      {/* ── STEP 1: Details ── */}
+      {/* STEP 1 */}
       {step === 1 && (
         <>
           <div className="auth-heading">
@@ -415,7 +406,21 @@ export default function Register() {
               <label>Password</label>
               <div className="input-wrapper">
                 <Lock />
-                <input type="password" name="password" placeholder="At least 6 characters" value={form.password} onChange={handleChange} required />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  placeholder="At least 6 characters"
+                  value={form.password}
+                  onChange={handleChange}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0 4px', display: 'flex', alignItems: 'center' }}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
             </div>
             <button type="submit" className="btn-primary">Next →</button>
@@ -426,7 +431,7 @@ export default function Register() {
         </>
       )}
 
-      {/* ── STEP 2: Country ── */}
+      {/* STEP 2 */}
       {step === 2 && (
         <>
           <div className="auth-heading">
@@ -436,52 +441,26 @@ export default function Register() {
           <form className="auth-form" onSubmit={handleStep2}>
             {error && <div className="alert alert-error">{error}</div>}
 
-            {/* Auto-detect button */}
-            <button
-              type="button"
-              onClick={detectLocation}
-              disabled={detectingLocation}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                width: '100%', padding: '11px 16px', marginBottom: 12,
-                background: 'transparent',
-                border: '2px dashed var(--border)',
-                borderRadius: 12, color: 'var(--text-muted)',
-                cursor: detectingLocation ? 'not-allowed' : 'pointer',
-                fontSize: 14, transition: 'all 0.2s',
-              }}
+            <button type="button" onClick={detectLocation} disabled={detectingLocation}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', padding: '11px 16px', marginBottom: 12, background: 'transparent', border: '2px dashed var(--border)', borderRadius: 12, color: 'var(--text-muted)', cursor: detectingLocation ? 'not-allowed' : 'pointer', fontSize: 14, transition: 'all 0.2s' }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--green)'; e.currentTarget.style.color = 'var(--green)'; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
-            >
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
               {detectingLocation
                 ? <><Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> Detecting location...</>
-                : <><MapPin size={16} /> Auto-detect my country</>
-              }
+                : <><MapPin size={16} /> Auto-detect my country</>}
             </button>
 
-            {locationError && (
-              <div style={{ fontSize: 12, color: '#f87171', marginBottom: 8, textAlign: 'center' }}>{locationError}</div>
-            )}
+            {locationError && <div style={{ fontSize: 12, color: '#f87171', marginBottom: 8, textAlign: 'center' }}>{locationError}</div>}
 
             <div className="input-group">
               <label>Country</label>
-              <div
-                onClick={() => setDropdownOpen(!dropdownOpen)}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '12px 16px', cursor: 'pointer',
-                  background: 'var(--surface2)',
-                  border: selectedCountry ? '2px solid var(--green)' : '2px solid var(--border)',
-                  borderRadius: 12, color: 'var(--text)',
-                }}
-              >
+              <div onClick={() => setDropdownOpen(!dropdownOpen)}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', cursor: 'pointer', background: 'var(--surface2)', border: selectedCountry ? '2px solid var(--green)' : '2px solid var(--border)', borderRadius: 12, color: 'var(--text)' }}>
                 {selectedCountry ? (
                   <span style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 15 }}>
                     <span style={{ fontSize: 22 }}>{selectedCountry.flag}</span>
                     <span>{selectedCountry.name}</span>
-                    <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-                      {selectedCountry.dialCode} · {selectedCountry.currency}
-                    </span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>{selectedCountry.dialCode} · {selectedCountry.currency}</span>
                   </span>
                 ) : (
                   <span style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-muted)' }}>
@@ -492,52 +471,26 @@ export default function Register() {
               </div>
 
               {dropdownOpen && (
-                <div style={{
-                  marginTop: 6, borderRadius: 12,
-                  border: '1px solid var(--border)',
-                  background: 'var(--surface2)',
-                  maxHeight: 300, overflowY: 'auto',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
-                  position: 'relative', zIndex: 10,
-                }}>
+                <div style={{ marginTop: 6, borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface2)', maxHeight: 300, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.3)', position: 'relative', zIndex: 10 }}>
                   <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--surface2)' }}>
-                    <input
-                      type="text"
-                      placeholder="Search country, code or currency..."
-                      value={countrySearch}
+                    <input type="text" placeholder="Search country, code or currency..." value={countrySearch}
                       onChange={e => setCountrySearch(e.target.value)}
-                      style={{
-                        width: '100%', padding: '8px 12px',
-                        background: 'var(--surface)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 8, color: 'var(--text)',
-                        fontSize: 13, outline: 'none', boxSizing: 'border-box'
-                      }}
-                      autoFocus
-                    />
+                      style={{ width: '100%', padding: '8px 12px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                      autoFocus />
                   </div>
                   {filteredCountries.length === 0 ? (
                     <div style={{ padding: 16, color: 'var(--text-muted)', fontSize: 14, textAlign: 'center' }}>No results</div>
                   ) : (
                     filteredCountries.map(country => (
-                      <div
-                        key={country.name}
+                      <div key={country.name}
                         onClick={() => { setSelectedCountry(country); setDropdownOpen(false); setCountrySearch(''); }}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 12,
-                          padding: '11px 16px', cursor: 'pointer',
-                          background: selectedCountry?.name === country.name ? 'rgba(0,200,100,0.08)' : 'transparent',
-                        }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 16px', cursor: 'pointer', background: selectedCountry?.name === country.name ? 'rgba(0,200,100,0.08)' : 'transparent' }}
                         onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
-                        onMouseLeave={e => e.currentTarget.style.background = selectedCountry?.name === country.name ? 'rgba(0,200,100,0.08)' : 'transparent'}
-                      >
+                        onMouseLeave={e => e.currentTarget.style.background = selectedCountry?.name === country.name ? 'rgba(0,200,100,0.08)' : 'transparent'}>
                         <span style={{ fontSize: 20 }}>{country.flag}</span>
                         <span style={{ flex: 1, fontSize: 14, color: 'var(--text)' }}>{country.name}</span>
                         <span style={{ fontSize: 12, color: 'var(--text-muted)', marginRight: 6 }}>{country.dialCode}</span>
-                        <span style={{
-                          fontSize: 11, padding: '2px 7px', borderRadius: 6, fontWeight: 600,
-                          background: 'var(--surface)', color: 'var(--green)', border: '1px solid var(--border)'
-                        }}>{country.currency}</span>
+                        <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 6, fontWeight: 600, background: 'var(--surface)', color: 'var(--green)', border: '1px solid var(--border)' }}>{country.currency}</span>
                       </div>
                     ))
                   )}
@@ -545,14 +498,8 @@ export default function Register() {
               )}
             </div>
 
-            {/* Info card */}
             {selectedCountry && (
-              <div style={{
-                padding: '14px 16px', borderRadius: 12,
-                background: 'rgba(0,200,100,0.07)',
-                border: '1px solid rgba(0,200,100,0.25)',
-                display: 'flex', gap: 0,
-              }}>
+              <div style={{ padding: '14px 16px', borderRadius: 12, background: 'rgba(0,200,100,0.07)', border: '1px solid rgba(0,200,100,0.25)', display: 'flex', gap: 0 }}>
                 {[
                   { label: 'DIAL CODE', value: selectedCountry.dialCode },
                   { label: 'CURRENCY', value: selectedCountry.currency },
@@ -575,7 +522,7 @@ export default function Register() {
         </>
       )}
 
-      {/* ── STEP 3: PIN ── */}
+      {/* STEP 3 */}
       {step === 3 && (
         <>
           <div className="auth-heading">
@@ -620,7 +567,6 @@ export default function Register() {
         </>
       )}
 
-      {/* Spinner keyframe */}
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
