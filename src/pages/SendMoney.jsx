@@ -352,15 +352,16 @@ export default function SendMoney() {
     setShowPin(false);
     setLoading(true);
 
+    // ── Find receiver (fetch fresh including balance) ─────────────────────────
     const { data: receiver } = await supabase
       .from('profiles')
-      .select('id, full_name')
+      .select('id, full_name, balance')
       .or(`phone.eq.${fullPhone},phone.eq.${form.phone}`)
       .single();
 
     if (!receiver) { setError('Recipient not found on PesaYetu'); setLoading(false); return; }
 
-    // ── Update sender wallet ──────────────────────────────────────────────────
+    // ── Deduct sender wallet ──────────────────────────────────────────────────
     if (fromWallet) {
       await supabase.from('currency_wallets')
         .update({ balance: fromWallet.balance - total })
@@ -371,7 +372,7 @@ export default function SendMoney() {
         .insert({ user_id: profile.id, currency: form.fromCurrency, balance: -total });
     }
 
-    // ── Update receiver wallet ────────────────────────────────────────────────
+    // ── Credit receiver wallet ────────────────────────────────────────────────
     const { data: receiverWallet } = await supabase
       .from('currency_wallets')
       .select('*')
@@ -389,38 +390,26 @@ export default function SendMoney() {
         .insert({ user_id: receiver.id, currency: form.receiveCurrency, balance: receiverGets });
     }
 
-    // ── Also update profiles.balance for both users ───────────────────────────
+    // ── Update profiles.balance for both (using fresh receiver.balance) ───────
     await supabase.from('profiles')
       .update({ balance: (profile.balance || 0) - total })
       .eq('id', profile.id);
 
     await supabase.from('profiles')
-      .update({ balance: (receiverWallet ? receiverWallet.balance + receiverGets : receiverGets) })
+      .update({ balance: (receiver.balance || 0) + receiverGets })  // ✅ fixed
       .eq('id', receiver.id);
 
-    // ── Insert sender transaction record ─────────────────────────────────────
-    await supabase.from('currency_transactions').insert({
+    // ── Insert single transaction record into 'transactions' table ────────────
+    await supabase.from('transactions').insert({   // ✅ was 'currency_transactions'
       sender_id: profile.id,
       receiver_id: receiver.id,
-      send_amount: amount,
-      send_currency: form.fromCurrency,
+      amount: amount,
+      currency: form.fromCurrency,
       receive_amount: receiverGets,
       receive_currency: form.receiveCurrency,
       exchange_rate: rate,
+      charge: charge,
       type: 'send',
-      note: form.note || null,
-    });
-
-    // ── Insert receiver transaction record ────────────────────────────────────
-    await supabase.from('currency_transactions').insert({
-      sender_id: profile.id,
-      receiver_id: receiver.id,
-      send_amount: amount,
-      send_currency: form.fromCurrency,
-      receive_amount: receiverGets,
-      receive_currency: form.receiveCurrency,
-      exchange_rate: rate,
-      type: 'receive',
       note: form.note || null,
     });
 
