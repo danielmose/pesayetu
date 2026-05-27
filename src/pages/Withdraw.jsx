@@ -264,10 +264,13 @@ export default function Withdraw() {
   const { profile, refreshProfile } = useAuth();
   const navigate = useNavigate();
 
+  // ── Dynamic currency from profile ──────────────────────────────────────────
+  const currency = profile?.currency || 'KES';
+  const currencySymbol = currency === 'KES' ? 'KSh' : currency;
+
   const [method, setMethod] = useState('mobilemoney');
   const [amount, setAmount] = useState('');
   const [phone, setPhone] = useState('');
-  // ── Init from profile, fall back to '+254' ─────────────────────────────────
   const [countryCode, setCountryCode] = useState(profile?.dial_code || '+254');
   const [bankCode, setBankCode] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
@@ -300,12 +303,19 @@ export default function Withdraw() {
     }
   }, [profile]);
 
+  // ── Re-fetch wallet balance when currency changes ──────────────────────────
+  useEffect(() => {
+    if (profile?.id) {
+      fetchWalletBalance();
+    }
+  }, [currency]);
+
   const fetchWalletBalance = async () => {
     const { data } = await supabase
       .from('currency_wallets')
       .select('balance')
       .eq('user_id', profile.id)
-      .eq('currency', 'KES')
+      .eq('currency', currency)   // ← dynamic currency, not hardcoded 'KES'
       .single();
     setWalletBalance(data?.balance || 0);
   };
@@ -323,9 +333,9 @@ export default function Withdraw() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!amt || amt < 10) { setError('Minimum withdrawal is KES 10'); return; }
-    if (amt > 1000000) { setError('Maximum withdrawal is KES 1,000,000'); return; }
-    if (total > walletBalance) { setError(`Insufficient balance. You need KES ${total.toLocaleString()} (amount + fee)`); return; }
+    if (!amt || amt < 10) { setError(`Minimum withdrawal is ${currency} 10`); return; }
+    if (amt > 1000000) { setError(`Maximum withdrawal is ${currency} 1,000,000`); return; }
+    if (total > walletBalance) { setError(`Insufficient balance. You need ${currency} ${total.toLocaleString()} (amount + fee)`); return; }
     if (method === 'mobilemoney' && !phone) { setError('Enter your mobile money phone number'); return; }
     if (method === 'bank' && (!bankCode || !accountNumber)) { setError('Enter bank code and account number'); return; }
     if (method === 'card' && !cardNumber) { setError('Enter your card number'); return; }
@@ -409,15 +419,15 @@ export default function Withdraw() {
         return;
       }
 
-      await supabase.from('currency_wallets').update({ balance: walletBalance - total }).eq('user_id', profile.id).eq('currency', 'KES');
+      await supabase.from('currency_wallets').update({ balance: walletBalance - total }).eq('user_id', profile.id).eq('currency', currency);
       await supabase.rpc('withdraw_money', { p_user_id: profile.id, p_amount: total });
       await supabase.from('currency_transactions').insert({
         sender_id: profile.id,
         receiver_id: profile.id,
         send_amount: amt,
-        send_currency: 'KES',
+        send_currency: currency,       // ← dynamic
         receive_amount: amt,
-        receive_currency: 'KES',
+        receive_currency: currency,    // ← dynamic
         exchange_rate: 1,
         type: 'withdraw',
         note: method,
@@ -440,11 +450,11 @@ export default function Withdraw() {
           <div style={{ color: 'var(--green)', marginBottom: 20 }}><CheckCircle size={72} /></div>
           <h2 style={{ fontSize: 24, fontWeight: 800, marginBottom: 8 }}>Withdrawal Successful! 🎉</h2>
           <p style={{ color: 'var(--text-muted)', marginBottom: 4 }}>
-            KES {Number(amount).toLocaleString()} withdrawal initiated
+            {currencySymbol} {Number(amount).toLocaleString()} withdrawal initiated
           </p>
           {charge > 0 && (
             <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 32 }}>
-              Fee: {formatCharge(charge)} KES
+              Fee: {formatCharge(charge)} {currency}
             </p>
           )}
           <button className="btn-primary" onClick={() => navigate('/')} style={{ width: '100%' }}>Back to Home</button>
@@ -487,14 +497,14 @@ export default function Withdraw() {
 
             {/* Amount */}
             <div className="input-group">
-              <label>Amount (KES)</label>
+              <label>Amount ({currency})</label>
               <div className="amount-input-wrapper">
-                <span className="amount-prefix" style={{ fontSize: 14 }}>KSh</span>
+                <span className="amount-prefix" style={{ fontSize: 14 }}>{currencySymbol}</span>
                 <input className="amount-input" type="number" placeholder="0.00"
                   min="0" step="any" value={amount} onChange={e => setAmount(e.target.value)} required style={{ paddingLeft: 64 }} />
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                Balance: KSh {Number(walletBalance).toLocaleString('en', { minimumFractionDigits: 2 })}
+                Balance: {currencySymbol} {Number(walletBalance).toLocaleString('en', { minimumFractionDigits: 2 })}
               </div>
             </div>
 
@@ -563,7 +573,7 @@ export default function Withdraw() {
               <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', fontSize: 13, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: 'var(--text-muted)' }}>Amount</span>
-                  <span>KSh {amt.toLocaleString()}</span>
+                  <span>{currencySymbol} {amt.toLocaleString()}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: 'var(--text-muted)' }}>Fee</span>
@@ -578,14 +588,14 @@ export default function Withdraw() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 2 }}>
                   <span style={{ fontWeight: 700 }}>Total Deducted</span>
                   <span style={{ fontFamily: 'Space Mono, monospace', fontWeight: 700, color: 'var(--green)' }}>
-                    KSh {total.toLocaleString('en', { minimumFractionDigits: 2 })}
+                    {currencySymbol} {total.toLocaleString('en', { minimumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>
             )}
 
             <button type="submit" className="btn-primary" disabled={loading}>
-              {loading ? 'Processing...' : `Withdraw KSh ${amount || '0'} ${charge === 0 ? '(Free)' : `+ ${formatCharge(charge)} fee`}`}
+              {loading ? 'Processing...' : `Withdraw ${currencySymbol} ${amount || '0'} ${charge === 0 ? '(Free)' : `+ ${formatCharge(charge)} fee`}`}
             </button>
           </div>
         </form>
