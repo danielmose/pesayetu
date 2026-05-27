@@ -14,10 +14,18 @@ export default function Dashboard() {
   const [wallets, setWallets] = useState([]);
 
   useEffect(() => {
-    refreshProfile();
-    fetchTransactions();
-    fetchWallets();
+    const init = async () => {
+      await refreshProfile();
+      fetchTransactions();
+    };
+    init();
   }, []);
+
+  // Fetch wallets whenever profile.id becomes available
+  useEffect(() => {
+    if (!profile?.id) return;
+    fetchWallets(profile.id);
+  }, [profile?.id]);
 
   const fetchTransactions = async () => {
     const { data, error } = await supabase
@@ -29,21 +37,22 @@ export default function Dashboard() {
     setTxLoading(false);
   };
 
-  const fetchWallets = async () => {
-    if (!profile?.id) return;
+  const fetchWallets = async (userId) => {
     const { data } = await supabase
       .from('currency_wallets')
       .select('*')
-      .eq('user_id', profile.id);
+      .eq('user_id', userId);
     setWallets(data || []);
   };
 
   const currency = profile?.currency || 'KES';
   const dialCode = profile?.dial_code || '';
 
-  // ── Read balance from currency_wallets (single source of truth) ──
+  // currency_wallets is the single source of truth
   const activeWallet = wallets.find(w => w.currency === currency);
-  const displayBalance = activeWallet ? activeWallet.balance : (profile?.balance || 0);
+  const displayBalance = activeWallet !== undefined
+    ? activeWallet.balance
+    : (profile?.balance || 0);
 
   const formatBalance = (bal) => {
     return Number(bal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
