@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Send, Download, Upload, Clock, TrendingUp } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
+import { CURRENCIES } from '../lib/currencies';
 import Navbar from '../components/Navbar';
 import BottomNav from '../components/BottomNav';
 import TransactionCard from '../components/TransactionCard';
@@ -21,7 +22,6 @@ export default function Dashboard() {
     init();
   }, []);
 
-  // Fetch wallets whenever profile.id becomes available
   useEffect(() => {
     if (!profile?.id) return;
     fetchWallets(profile.id);
@@ -29,8 +29,13 @@ export default function Dashboard() {
 
   const fetchTransactions = async () => {
     const { data, error } = await supabase
-      .from('transactions')
-      .select('*, sender:sender_id(full_name), receiver:receiver_id(full_name)')
+      .from('currency_transactions')
+      .select(`
+        *,
+        sender:sender_id(full_name),
+        receiver:receiver_id(full_name)
+      `)
+      .or(`sender_id.eq.${profile?.id},receiver_id.eq.${profile?.id}`)
       .order('created_at', { ascending: false })
       .limit(5);
     if (!error) setTransactions(data || []);
@@ -45,25 +50,12 @@ export default function Dashboard() {
     setWallets(data || []);
   };
 
-  const currency = profile?.currency || 'KES';
-  const dialCode = profile?.dial_code || '';
-
-  // currency_wallets is the single source of truth
-  const activeWallet = wallets.find(w => w.currency === currency);
-  const displayBalance = activeWallet !== undefined
-    ? activeWallet.balance
-    : (profile?.balance || 0);
+  // Get total balance in KES (main wallet)
+  const kesWallet = wallets.find(w => w.currency === 'KES');
+  const displayBalance = kesWallet ? kesWallet.balance : (profile?.balance || 0);
 
   const formatBalance = (bal) => {
-    return Number(bal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
-  };
-
-  const displayPhone = () => {
-    if (!profile?.phone) return '';
-    if (dialCode && !profile.phone.startsWith('+')) {
-      return `${dialCode} ${profile.phone}`;
-    }
-    return profile.phone;
+    return Number(bal || 0).toLocaleString('en-KE', { minimumFractionDigits: 2 });
   };
 
   return (
@@ -75,10 +67,24 @@ export default function Dashboard() {
         <div className="balance-card">
           <div className="balance-label">Available Balance</div>
           <div className="balance-amount">
-            <span className="balance-currency">{currency} </span>
+            <span className="balance-currency">KES </span>
             {formatBalance(displayBalance)}
           </div>
-          <div className="balance-phone">{displayPhone()}</div>
+          <div className="balance-phone">{profile?.phone}</div>
+
+          {/* Other wallets */}
+          {wallets.filter(w => w.currency !== 'KES' && w.balance > 0).length > 0 && (
+            <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {wallets.filter(w => w.currency !== 'KES' && w.balance > 0).map(w => (
+                <div key={w.currency} style={{
+                  background: 'rgba(255,255,255,0.15)', borderRadius: 8,
+                  padding: '4px 10px', fontSize: 12, fontFamily: 'Space Mono, monospace'
+                }}>
+                  {CURRENCIES[w.currency]?.flag} {w.currency} {Number(w.balance).toFixed(2)}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Quick Actions */}
@@ -125,7 +131,7 @@ export default function Dashboard() {
               </div>
             ) : (
               transactions.map(tx => (
-                <TransactionCard key={tx.id} tx={tx} />
+                <TransactionCard key={tx.id} tx={tx} currentUserId={profile?.id} />
               ))
             )}
           </div>
