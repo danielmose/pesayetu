@@ -408,4 +408,102 @@ export default function SendMoney() {
                 <div style={{ position: 'relative', flexShrink: 0 }}>
                   <select
                     value={countryCode}
-                    onChange={(e) => { setCountryCode(e.target.value); if
+                    onChange={(e) => { setCountryCode(e.target.value); if (form.phone.length >= 9) lookupReceiver(form.phone); }}
+                    style={{ appearance: 'none', WebkitAppearance: 'none', padding: '12px 32px 12px 12px', background: 'var(--surface2)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif', fontSize: 14, outline: 'none', cursor: 'pointer', minWidth: 90 }}
+                  >
+                    {COUNTRY_CODES.map(c => (
+                      <option key={c.code + c.name} value={c.code}>{c.flag} {c.code}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }} />
+                </div>
+                <div className="input-wrapper" style={{ flex: 1 }}>
+                  <Phone size={16} />
+                  <input type="tel" name="phone" placeholder="712345678" value={form.phone}
+                    onChange={(e) => { handleChange(e); lookupReceiver(e.target.value); }} required />
+                </div>
+              </div>
+              {form.phone && (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                  Full number: {countryCode}{form.phone.replace(/^0/, '')}
+                </div>
+              )}
+              {receiverInfo && (
+                <div style={{ fontSize: 12, color: 'var(--green)', marginTop: 4, fontWeight: 600 }}>
+                  ✅ {receiverInfo.full_name}
+                </div>
+              )}
+            </div>
+
+            <div className="input-group">
+              <label>Amount ({form.fromCurrency})</label>
+              <div className="amount-input-wrapper">
+                <span className="amount-prefix" style={{ fontSize: 14 }}>{CURRENCIES[form.fromCurrency]?.symbol}</span>
+                <input className="amount-input" type="number" name="amount" placeholder="0.00"
+                  min="0" step="any" value={form.amount} onChange={handleChange} required style={{ paddingLeft: 64 }} />
+              </div>
+            </div>
+
+            <div className="input-group">
+              <label>Receiver Gets In</label>
+              <select name="receiveCurrency" value={form.receiveCurrency} onChange={handleChange}
+                style={{ width: '100%', padding: '12px', background: 'var(--surface2)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif', fontSize: 14, outline: 'none' }}>
+                {Object.keys(CURRENCIES).map(code => (
+                  <option key={code} value={code}>{CURRENCIES[code]?.flag} {code} — {CURRENCIES[code]?.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {amount > 0 && (
+              <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 16px', fontSize: 13, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Amount</span>
+                  <span>{CURRENCIES[form.fromCurrency]?.symbol} {amount.toLocaleString()} {form.fromCurrency}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Fee</span>
+                  <span style={{ color: charge === 0 ? 'var(--green)' : 'var(--text)' }}>{formatCharge(charge)}</span>
+                </div>
+                {form.fromCurrency !== form.receiveCurrency && rates && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Rate</span>
+                    <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11 }}>1 {form.fromCurrency} = {rate.toFixed(4)} {form.receiveCurrency}</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 2 }}>
+                  <span style={{ fontWeight: 700 }}>Receiver Gets</span>
+                  <span style={{ fontFamily: 'Space Mono, monospace', fontWeight: 700, color: 'var(--green)' }}>
+                    {CURRENCIES[form.receiveCurrency]?.symbol} {receiverGets.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} {form.receiveCurrency}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="input-group">
+              <label>Note (Optional)</label>
+              <div className="input-wrapper">
+                <FileText />
+                <input type="text" name="note" placeholder="What's this for?" value={form.note} onChange={handleChange} maxLength={100} />
+              </div>
+            </div>
+
+            <button type="submit" className="btn-primary" disabled={loading}>
+              {loading ? 'Sending...' : `Send ${form.amount || '0'} ${form.fromCurrency} ${charge === 0 ? '(Free)' : `+ ${formatCharge(charge)} fee`}`}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {showPin && (
+        <PinModal
+          title="Confirm Send"
+          error={pinError}
+          onConfirm={handlePinConfirm}
+          onCancel={() => { setShowPin(false); setPinError(''); }}
+        />
+      )}
+
+      <BottomNav />
+    </div>
+  );
+}
