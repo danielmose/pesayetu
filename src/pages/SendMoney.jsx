@@ -225,7 +225,6 @@ export default function SendMoney() {
   const [showPin, setShowPin] = useState(false);
   const [pinError, setPinError] = useState('');
 
-  // ── On mount: refresh profile + fetch supporting data ──────────────────────
   useEffect(() => {
     refreshProfile();
     fetchWallets();
@@ -233,7 +232,6 @@ export default function SendMoney() {
     detectLocation();
   }, []);
 
-  // ── Whenever profile updates, sync currency + dial code into form ──────────
   useEffect(() => {
     if (profile?.currency) {
       setForm(f => ({ ...f, fromCurrency: profile.currency, receiveCurrency: profile.currency }));
@@ -255,7 +253,6 @@ export default function SendMoney() {
     try {
       const res = await fetch('https://ipapi.co/json/');
       const data = await res.json();
-      // Only use IP detection as fallback if profile has no dial_code/currency
       if (!profile?.dial_code) {
         const detected = COUNTRY_CODES.find(c => c.name === data.country_name);
         if (detected) setCountryCode(detected.code);
@@ -363,25 +360,68 @@ export default function SendMoney() {
 
     if (!receiver) { setError('Recipient not found on PesaYetu'); setLoading(false); return; }
 
+    // ── Update sender wallet ──────────────────────────────────────────────────
     if (fromWallet) {
-      await supabase.from('currency_wallets').update({ balance: fromWallet.balance - total }).eq('user_id', profile.id).eq('currency', form.fromCurrency);
+      await supabase.from('currency_wallets')
+        .update({ balance: fromWallet.balance - total })
+        .eq('user_id', profile.id)
+        .eq('currency', form.fromCurrency);
     } else {
-      await supabase.from('currency_wallets').insert({ user_id: profile.id, currency: form.fromCurrency, balance: -total });
+      await supabase.from('currency_wallets')
+        .insert({ user_id: profile.id, currency: form.fromCurrency, balance: -total });
     }
 
-    const { data: receiverWallet } = await supabase.from('currency_wallets').select('*').eq('user_id', receiver.id).eq('currency', form.receiveCurrency).single();
+    // ── Update receiver wallet ────────────────────────────────────────────────
+    const { data: receiverWallet } = await supabase
+      .from('currency_wallets')
+      .select('*')
+      .eq('user_id', receiver.id)
+      .eq('currency', form.receiveCurrency)
+      .single();
 
     if (receiverWallet) {
-      await supabase.from('currency_wallets').update({ balance: receiverWallet.balance + receiverGets }).eq('user_id', receiver.id).eq('currency', form.receiveCurrency);
+      await supabase.from('currency_wallets')
+        .update({ balance: receiverWallet.balance + receiverGets })
+        .eq('user_id', receiver.id)
+        .eq('currency', form.receiveCurrency);
     } else {
-      await supabase.from('currency_wallets').insert({ user_id: receiver.id, currency: form.receiveCurrency, balance: receiverGets });
+      await supabase.from('currency_wallets')
+        .insert({ user_id: receiver.id, currency: form.receiveCurrency, balance: receiverGets });
     }
 
+    // ── Also update profiles.balance for both users ───────────────────────────
+    await supabase.from('profiles')
+      .update({ balance: (profile.balance || 0) - total })
+      .eq('id', profile.id);
+
+    await supabase.from('profiles')
+      .update({ balance: (receiverWallet ? receiverWallet.balance + receiverGets : receiverGets) })
+      .eq('id', receiver.id);
+
+    // ── Insert sender transaction record ─────────────────────────────────────
     await supabase.from('currency_transactions').insert({
-      sender_id: profile.id, receiver_id: receiver.id,
-      send_amount: amount, send_currency: form.fromCurrency,
-      receive_amount: receiverGets, receive_currency: form.receiveCurrency,
-      exchange_rate: rate, type: 'send', note: form.note || null,
+      sender_id: profile.id,
+      receiver_id: receiver.id,
+      send_amount: amount,
+      send_currency: form.fromCurrency,
+      receive_amount: receiverGets,
+      receive_currency: form.receiveCurrency,
+      exchange_rate: rate,
+      type: 'send',
+      note: form.note || null,
+    });
+
+    // ── Insert receiver transaction record ────────────────────────────────────
+    await supabase.from('currency_transactions').insert({
+      sender_id: profile.id,
+      receiver_id: receiver.id,
+      send_amount: amount,
+      send_currency: form.fromCurrency,
+      receive_amount: receiverGets,
+      receive_currency: form.receiveCurrency,
+      exchange_rate: rate,
+      type: 'receive',
+      note: form.note || null,
     });
 
     await refreshProfile();
@@ -407,7 +447,6 @@ export default function SendMoney() {
           <button className="btn-primary" onClick={() => navigate('/')} style={{ width: '100%' }}>Back to Home</button>
           <button className="btn-secondary" onClick={() => {
             setSuccess(null);
-            // ── Fix: reset to profile currency instead of hardcoded KES ──
             setForm({
               phone: '',
               amount: '',
