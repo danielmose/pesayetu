@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Phone, FileText, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Phone, FileText, CheckCircle, ChevronDown } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { CURRENCIES, fetchExchangeRates, convertCurrency } from '../lib/currencies';
@@ -9,12 +9,29 @@ import Navbar from '../components/Navbar';
 import BottomNav from '../components/BottomNav';
 import PinModal from '../components/PinModal';
 
+const COUNTRY_CODES = [
+  { code: '+254', flag: '🇰🇪', name: 'Kenya' },
+  { code: '+255', flag: '🇹🇿', name: 'Tanzania' },
+  { code: '+256', flag: '🇺🇬', name: 'Uganda' },
+  { code: '+250', flag: '🇷🇼', name: 'Rwanda' },
+  { code: '+251', flag: '🇪🇹', name: 'Ethiopia' },
+  { code: '+234', flag: '🇳🇬', name: 'Nigeria' },
+  { code: '+233', flag: '🇬🇭', name: 'Ghana' },
+  { code: '+27', flag: '🇿🇦', name: 'South Africa' },
+  { code: '+1', flag: '🇺🇸', name: 'USA' },
+  { code: '+44', flag: '🇬🇧', name: 'UK' },
+  { code: '+971', flag: '🇦🇪', name: 'UAE' },
+  { code: '+91', flag: '🇮🇳', name: 'India' },
+  { code: '+86', flag: '🇨🇳', name: 'China' },
+];
+
 export default function SendMoney() {
   const { profile, refreshProfile } = useAuth();
   const navigate = useNavigate();
   const [wallets, setWallets] = useState([]);
   const [rates, setRates] = useState(null);
   const [form, setForm] = useState({ phone: '', amount: '', note: '', fromCurrency: 'KES', receiveCurrency: 'KES' });
+  const [countryCode, setCountryCode] = useState('+254');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
@@ -50,12 +67,17 @@ export default function SendMoney() {
   const fromWallet = wallets.find(w => w.currency === form.fromCurrency);
   const fromBalance = fromWallet ? fromWallet.balance : 0;
 
+  // Full phone number with country code
+  const fullPhone = form.phone ? `${countryCode}${form.phone.replace(/^0/, '')}` : '';
+
   const lookupReceiver = async (phone) => {
-    if (phone.length >= 10) {
+    const full = `${countryCode}${phone.replace(/^0/, '')}`;
+    if (phone.length >= 9) {
+      // Try with full international format first, then local
       const { data } = await supabase
         .from('profiles')
         .select('full_name, phone')
-        .eq('phone', phone)
+        .or(`phone.eq.${full},phone.eq.${phone}`)
         .single();
       setReceiverInfo(data || null);
     } else {
@@ -80,7 +102,6 @@ export default function SendMoney() {
   const handlePinConfirm = async (pin) => {
     setPinError('');
 
-    // Always fetch fresh profile from Supabase
     const { data: freshProfile, error: profileError } = await supabase
       .from('profiles')
       .select('transaction_pin, pin_attempts, pin_locked_until')
@@ -92,7 +113,6 @@ export default function SendMoney() {
       return;
     }
 
-    // Check if locked
     if (freshProfile.pin_locked_until) {
       const lockedUntil = new Date(freshProfile.pin_locked_until);
       const now = new Date();
@@ -101,17 +121,14 @@ export default function SendMoney() {
         setPinError(`PIN locked. Try again in ${remaining} minute${remaining > 1 ? 's' : ''}.`);
         return;
       }
-      // Lock expired - reset
       await supabase.from('profiles').update({ pin_attempts: 0, pin_locked_until: null }).eq('id', profile.id);
     }
 
-    // Check PIN is set
     if (!freshProfile.transaction_pin) {
       setPinError('No PIN set. Please set a PIN in Settings.');
       return;
     }
 
-    // Verify PIN
     const isCorrect = btoa(pin) === freshProfile.transaction_pin;
 
     if (!isCorrect) {
@@ -134,20 +151,19 @@ export default function SendMoney() {
       return;
     }
 
-    // PIN correct
     await supabase.from('profiles').update({ pin_attempts: 0, pin_locked_until: null }).eq('id', profile.id);
     setShowPin(false);
     setLoading(true);
 
+    // Look up receiver by full phone or local phone
     const { data: receiver } = await supabase
       .from('profiles')
       .select('id, full_name')
-      .eq('phone', form.phone)
+      .or(`phone.eq.${fullPhone},phone.eq.${form.phone}`)
       .single();
 
     if (!receiver) { setError('Recipient not found on PesaYetu'); setLoading(false); return; }
 
-    // Deduct from sender wallet
     if (fromWallet) {
       await supabase
         .from('currency_wallets')
@@ -160,7 +176,6 @@ export default function SendMoney() {
         .insert({ user_id: profile.id, currency: form.fromCurrency, balance: -total });
     }
 
-    // Add to receiver wallet
     const { data: receiverWallet } = await supabase
       .from('currency_wallets')
       .select('*')
@@ -180,7 +195,6 @@ export default function SendMoney() {
         .insert({ user_id: receiver.id, currency: form.receiveCurrency, balance: receiverGets });
     }
 
-    // Record transaction
     await supabase.from('currency_transactions').insert({
       sender_id: profile.id,
       receiver_id: receiver.id,
@@ -227,6 +241,8 @@ export default function SendMoney() {
     );
   }
 
+  const selectedCountry = COUNTRY_CODES.find(c => c.code === countryCode);
+
   return (
     <div className="app-layout">
       <Navbar />
@@ -255,11 +271,66 @@ export default function SendMoney() {
 
             <div className="input-group">
               <label>Recipient Phone</label>
-              <div className="input-wrapper">
-                <Phone />
-                <input type="tel" name="phone" placeholder="0712345678" value={form.phone}
-                  onChange={(e) => { handleChange(e); lookupReceiver(e.target.value); }} required />
+              <div style={{ display: 'flex', gap: 8 }}>
+                {/* Country code dropdown */}
+                <div style={{ position: 'relative', flexShrink: 0 }}>
+                  <select
+                    value={countryCode}
+                    onChange={(e) => {
+                      setCountryCode(e.target.value);
+                      if (form.phone.length >= 9) lookupReceiver(form.phone);
+                    }}
+                    style={{
+                      appearance: 'none',
+                      WebkitAppearance: 'none',
+                      padding: '12px 32px 12px 12px',
+                      background: 'var(--surface2)',
+                      border: '1.5px solid var(--border)',
+                      borderRadius: 10,
+                      color: 'var(--text)',
+                      fontFamily: 'Plus Jakarta Sans, sans-serif',
+                      fontSize: 14,
+                      outline: 'none',
+                      cursor: 'pointer',
+                      minWidth: 90,
+                    }}
+                  >
+                    {COUNTRY_CODES.map(c => (
+                      <option key={c.code} value={c.code}>
+                        {c.flag} {c.code}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} style={{
+                    position: 'absolute', right: 8, top: '50%',
+                    transform: 'translateY(-50%)', pointerEvents: 'none',
+                    color: 'var(--text-muted)'
+                  }} />
+                </div>
+
+                {/* Phone number input */}
+                <div className="input-wrapper" style={{ flex: 1 }}>
+                  <Phone size={16} />
+                  <input
+                    type="tel"
+                    name="phone"
+                    placeholder="712345678"
+                    value={form.phone}
+                    onChange={(e) => {
+                      handleChange(e);
+                      lookupReceiver(e.target.value);
+                    }}
+                    required
+                  />
+                </div>
               </div>
+
+              {form.phone && (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                  Full number: {countryCode}{form.phone.replace(/^0/, '')}
+                </div>
+              )}
+
               {receiverInfo && (
                 <div style={{ fontSize: 12, color: 'var(--green)', marginTop: 4, fontWeight: 600 }}>
                   ✅ {receiverInfo.full_name}
@@ -338,5 +409,5 @@ export default function SendMoney() {
       <BottomNav />
     </div>
   );
-    }
-    
+  }
+      
