@@ -242,6 +242,7 @@ export default function SendMoney() {
   }, [profile]);
 
   const fetchWallets = async () => {
+    if (!profile?.id) return; // ✅ FIX 1: guard against missing profile
     const { data } = await supabase
       .from('currency_wallets')
       .select('*')
@@ -288,7 +289,7 @@ export default function SendMoney() {
         .from('profiles')
         .select('full_name, phone')
         .or(`phone.eq.${full},phone.eq.${phone}`)
-        .single();
+        .maybeSingle(); // ✅ FIX 2: maybeSingle() won't throw error when no match
       setReceiverInfo(data || null);
     } else {
       setReceiverInfo(null);
@@ -300,6 +301,7 @@ export default function SendMoney() {
     setError('');
     if (!amount || amount <= 0) { setError('Enter a valid amount'); return; }
     if (amount < 10) { setError('Minimum send amount is KES 10'); return; }
+    if (!receiverInfo) { setError('Recipient not found on PesaYetu'); return; } // ✅ FIX 3: validate receiver before PIN
     if (fromBalance < total) {
       setError(`Insufficient ${form.fromCurrency} balance. Need ${total.toLocaleString()}`);
       return;
@@ -352,71 +354,112 @@ export default function SendMoney() {
     setShowPin(false);
     setLoading(true);
 
-    // ── Find receiver (fetch fresh including balance) ─────────────────────────
-    const { data: receiver } = await supabase
-      .from('profiles')
-      .select('id, full_name, balance')
-      .or(`phone.eq.${fullPhone},phone.eq.${form.phone}`)
-      .single();
+    try { // ✅ FIX 4: wrap entire transaction in try/catch so errors surface
+      // ── Find receiver (fetch fresh including balance) ──────────────────────
+      const { data: receiver, error: receiverError } = await supabase
+        .from('profiles')
+        .select('id, full_name, balance')
+        .or(`phone.eq.${fullPhone},phone.eq.${form.phone}`)
+        .maybeSingle(); // ✅ FIX 5: maybeSingle() instead of single() — no crash if not found
 
-    if (!receiver) { setError('Recipient not found on PesaYetu'); setLoading(false); return; }
+      if (receiverError || !receiver) {
+        setError('Recipient not found on PesaYetu');
+        setLoading(false);
+        return;
+      }
 
-    // ── Deduct sender wallet ──────────────────────────────────────────────────
-    if (fromWallet) {
-      await supabase.from('currency_wallets')
-        .update({ balance: fromWallet.balance - total })
+      // ✅ FIX 6: fetch fresh sender wallet balance to avoid stale closure values
+      const { data: freshSenderWallet } = await supabase
+        .from('currency_wallets')
+        .select('*')
         .eq('user_id', profile.id)
-        .eq('currency', form.fromCurrency);
-    } else {
-      await supabase.from('currency_wallets')
-        .insert({ user_id: profile.id, currency: form.fromCurrency, balance: -total });
-    }
+        .eq('currency', form.fromCurrency)
+        .maybeSingle();
 
-    // ── Credit receiver wallet ────────────────────────────────────────────────
-    const { data: receiverWallet } = await supabase
-      .from('currency_wallets')
-      .select('*')
-      .eq('user_id', receiver.id)
-      .eq('currency', form.receiveCurrency)
-      .single();
+      // ── Deduct sender wallet ─────────────────────────────────────────────────
+      if (freshSenderWallet) {
+        const { error: deductError } = await supabase
+          .from('currency_wallets')
+          .update({ balance: freshSenderWallet.balance - total })
+          .eq('user_id', profile.id)
+          .eq('currency', form.fromCurrency);
+        if (deductError) throw new Error('Failed to deduct sender balance');
+      } else {
+        // Wallet doesn't exist — can't deduct, abort
+        setError(`No ${form.fromCurrency} wallet found. Please deposit first.`);
+        setLoading(false);
+        return;
+      }
 
-    if (receiverWallet) {
-      await supabase.from('currency_wallets')
-        .update({ balance: receiverWallet.balance + receiverGets })
+      // ── Credit receiver wallet ───────────────────────────────────────────────
+      const { data: receiverWallet } = await supabase
+        .from('currency_wallets')
+        .select('*')
         .eq('user_id', receiver.id)
-        .eq('currency', form.receiveCurrency);
-    } else {
-      await supabase.from('currency_wallets')
-        .insert({ user_id: receiver.id, currency: form.receiveCurrency, balance: receiverGets });
+        .eq('currency', form.receiveCurrency)
+        .maybeSingle(); // ✅ FIX 7: maybeSingle() — no crash if receiver has no wallet yet
+
+      if (receiverWallet) {
+        await supabase
+          .from('currency_wallets')
+          .update({ balance: receiverWallet.balance + receiverGets })
+          .eq('user_id', receiver.id)
+          .eq('currency', form.receiveCurrency);
+      } else {
+        await supabase
+          .from('currency_wallets')
+          .insert({ user_id: receiver.id, currency: form.receiveCurrency, balance: receiverGets });
+      }
+
+      // ── Update profiles.balance for both ────────────────────────────────────
+      // ✅ FIX 8: fetch fresh sender profile balance too (not stale profile.balance)
+      const { data: freshSenderProfile } = await supabase
+        .from('profiles')
+        .select('balance')
+        .eq('id', profile.id)
+        .single();
+
+      await supabase
+        .from('profiles')
+        .update({ balance: (freshSenderProfile?.balance || 0) - total })
+        .eq('id', profile.id);
+
+      await supabase
+        .from('profiles')
+        .update({ balance: (receiver.balance || 0) + receiverGets })
+        .eq('id', receiver.id);
+
+      // ── Insert transaction record ────────────────────────────────────────────
+      // ✅ FIX 9: store send_amount & send_currency so TransactionCard can read them
+      const { error: txError } = await supabase.from('transactions').insert({
+        sender_id: profile.id,
+        receiver_id: receiver.id,
+        send_amount: amount,           // ✅ was 'amount' — matches TransactionCard
+        send_currency: form.fromCurrency, // ✅ was 'currency' — matches TransactionCard
+        receive_amount: receiverGets,
+        receive_currency: form.receiveCurrency,
+        exchange_rate: rate,
+        charge: charge,
+        type: 'send',
+        note: form.note || null,
+      });
+
+      if (txError) throw new Error('Transaction record failed: ' + txError.message);
+
+      await refreshProfile();
+      await fetchWallets();
+      setSuccess({
+        receiverName: receiver.full_name,
+        receiverGets,
+        receiveCurrency: form.receiveCurrency,
+      });
+
+    } catch (err) {
+      console.error('Send error:', err);
+      setError(err.message || 'Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
     }
-
-    // ── Update profiles.balance for both (using fresh receiver.balance) ───────
-    await supabase.from('profiles')
-      .update({ balance: (profile.balance || 0) - total })
-      .eq('id', profile.id);
-
-    await supabase.from('profiles')
-      .update({ balance: (receiver.balance || 0) + receiverGets })  // ✅ fixed
-      .eq('id', receiver.id);
-
-    // ── Insert single transaction record into 'transactions' table ────────────
-    await supabase.from('transactions').insert({   // ✅ was 'currency_transactions'
-      sender_id: profile.id,
-      receiver_id: receiver.id,
-      amount: amount,
-      currency: form.fromCurrency,
-      receive_amount: receiverGets,
-      receive_currency: form.receiveCurrency,
-      exchange_rate: rate,
-      charge: charge,
-      type: 'send',
-      note: form.note || null,
-    });
-
-    await refreshProfile();
-    await fetchWallets();
-    setSuccess({ receiverName: receiver.full_name, receiverGets, receiveCurrency: form.receiveCurrency });
-    setLoading(false);
   };
 
   if (success) {
@@ -502,11 +545,15 @@ export default function SendMoney() {
                   Full number: {countryCode}{form.phone.replace(/^0/, '')}
                 </div>
               )}
-              {receiverInfo && (
+              {receiverInfo ? (
                 <div style={{ fontSize: 12, color: 'var(--green)', marginTop: 4, fontWeight: 600 }}>
                   ✅ {receiverInfo.full_name}
                 </div>
-              )}
+              ) : form.phone.length >= 9 ? ( // ✅ FIX 10: show not-found warning to user
+                <div style={{ fontSize: 12, color: 'var(--red, #f87171)', marginTop: 4 }}>
+                  ❌ No PesaYetu account found for this number
+                </div>
+              ) : null}
             </div>
 
             <div className="input-group">
@@ -561,7 +608,7 @@ export default function SendMoney() {
               </div>
             </div>
 
-            <button type="submit" className="btn-primary" disabled={loading}>
+            <button type="submit" className="btn-primary" disabled={loading || !receiverInfo}>
               {loading ? 'Sending...' : `Send ${form.amount || '0'} ${form.fromCurrency} ${charge === 0 ? '(Free)' : `+ ${formatCharge(charge)} fee`}`}
             </button>
           </div>
