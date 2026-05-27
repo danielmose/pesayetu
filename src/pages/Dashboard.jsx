@@ -27,8 +27,20 @@ export default function Dashboard() {
     setTxLoading(false);
   };
 
+  const currency = profile?.currency || 'KES';
+  const dialCode = profile?.dial_code || '';
+
   const formatBalance = (bal) => {
-    return Number(bal || 0).toLocaleString('en-KE', { minimumFractionDigits: 2 });
+    return Number(bal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 });
+  };
+
+  // Show dial code prefix + local number, or just the number if no dial code
+  const displayPhone = () => {
+    if (!profile?.phone) return '';
+    if (dialCode && !profile.phone.startsWith('+')) {
+      return `${dialCode} ${profile.phone}`;
+    }
+    return profile.phone;
   };
 
   return (
@@ -40,10 +52,10 @@ export default function Dashboard() {
         <div className="balance-card">
           <div className="balance-label">Available Balance</div>
           <div className="balance-amount">
-            <span className="balance-currency">KES </span>
+            <span className="balance-currency">{currency} </span>
             {formatBalance(profile?.balance)}
           </div>
-          <div className="balance-phone">{profile?.phone}</div>
+          <div className="balance-phone">{displayPhone()}</div>
         </div>
 
         {/* Quick Actions */}
