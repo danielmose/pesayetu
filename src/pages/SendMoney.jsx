@@ -80,28 +80,42 @@ export default function SendMoney() {
   const handlePinConfirm = async (pin) => {
     setPinError('');
 
-    // Check PIN lockout
-    if (profile.pin_locked_until) {
-      const lockedUntil = new Date(profile.pin_locked_until);
+    // Always fetch fresh profile from Supabase
+    const { data: freshProfile, error: profileError } = await supabase
+      .from('profiles')
+      .select('transaction_pin, pin_attempts, pin_locked_until')
+      .eq('id', profile.id)
+      .single();
+
+    if (profileError || !freshProfile) {
+      setPinError('Could not verify PIN. Please try again.');
+      return;
+    }
+
+    // Check if locked
+    if (freshProfile.pin_locked_until) {
+      const lockedUntil = new Date(freshProfile.pin_locked_until);
       const now = new Date();
       if (now < lockedUntil) {
         const remaining = Math.ceil((lockedUntil - now) / 60000);
         setPinError(`PIN locked. Try again in ${remaining} minute${remaining > 1 ? 's' : ''}.`);
         return;
       }
+      // Lock expired - reset
+      await supabase.from('profiles').update({ pin_attempts: 0, pin_locked_until: null }).eq('id', profile.id);
     }
 
-    // Check PIN set
-    if (!profile.transaction_pin) {
+    // Check PIN is set
+    if (!freshProfile.transaction_pin) {
       setPinError('No PIN set. Please set a PIN in Settings.');
       return;
     }
 
     // Verify PIN
-    const isCorrect = btoa(pin) === profile.transaction_pin;
+    const isCorrect = btoa(pin) === freshProfile.transaction_pin;
 
     if (!isCorrect) {
-      const attempts = (profile.pin_attempts || 0) + 1;
+      const attempts = (freshProfile.pin_attempts || 0) + 1;
       const MAX_ATTEMPTS = 3;
       const LOCK_MINUTES = 30;
 
@@ -120,9 +134,8 @@ export default function SendMoney() {
       return;
     }
 
-    // PIN correct — reset attempts
+    // PIN correct
     await supabase.from('profiles').update({ pin_attempts: 0, pin_locked_until: null }).eq('id', profile.id);
-
     setShowPin(false);
     setLoading(true);
 
@@ -134,6 +147,7 @@ export default function SendMoney() {
 
     if (!receiver) { setError('Recipient not found on PesaYetu'); setLoading(false); return; }
 
+    // Deduct from sender wallet
     if (fromWallet) {
       await supabase
         .from('currency_wallets')
@@ -146,6 +160,7 @@ export default function SendMoney() {
         .insert({ user_id: profile.id, currency: form.fromCurrency, balance: -total });
     }
 
+    // Add to receiver wallet
     const { data: receiverWallet } = await supabase
       .from('currency_wallets')
       .select('*')
@@ -165,6 +180,7 @@ export default function SendMoney() {
         .insert({ user_id: receiver.id, currency: form.receiveCurrency, balance: receiverGets });
     }
 
+    // Record transaction
     await supabase.from('currency_transactions').insert({
       sender_id: profile.id,
       receiver_id: receiver.id,
@@ -322,5 +338,5 @@ export default function SendMoney() {
       <BottomNav />
     </div>
   );
-        }
-                
+    }
+    
