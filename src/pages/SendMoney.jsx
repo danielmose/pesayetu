@@ -210,8 +210,14 @@ export default function SendMoney() {
   const navigate = useNavigate();
   const [wallets, setWallets] = useState([]);
   const [rates, setRates] = useState(null);
-  const [form, setForm] = useState({ phone: '', amount: '', note: '', fromCurrency: 'KES', receiveCurrency: 'KES' });
-  const [countryCode, setCountryCode] = useState('+254');
+  const [form, setForm] = useState({
+    phone: '',
+    amount: '',
+    note: '',
+    fromCurrency: profile?.currency || 'KES',
+    receiveCurrency: profile?.currency || 'KES',
+  });
+  const [countryCode, setCountryCode] = useState(profile?.dial_code || '+254');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null);
@@ -219,11 +225,23 @@ export default function SendMoney() {
   const [showPin, setShowPin] = useState(false);
   const [pinError, setPinError] = useState('');
 
+  // ── On mount: refresh profile + fetch supporting data ──────────────────────
   useEffect(() => {
+    refreshProfile();
     fetchWallets();
     fetchExchangeRates().then(setRates);
     detectLocation();
   }, []);
+
+  // ── Whenever profile updates, sync currency + dial code into form ──────────
+  useEffect(() => {
+    if (profile?.currency) {
+      setForm(f => ({ ...f, fromCurrency: profile.currency, receiveCurrency: profile.currency }));
+    }
+    if (profile?.dial_code) {
+      setCountryCode(profile.dial_code);
+    }
+  }, [profile]);
 
   const fetchWallets = async () => {
     const { data } = await supabase
@@ -237,15 +255,16 @@ export default function SendMoney() {
     try {
       const res = await fetch('https://ipapi.co/json/');
       const data = await res.json();
-      const detected = COUNTRY_CODES.find(c => c.name === data.country_name);
-      if (detected) {
-        setCountryCode(detected.code);
+      // Only use IP detection as fallback if profile has no dial_code/currency
+      if (!profile?.dial_code) {
+        const detected = COUNTRY_CODES.find(c => c.name === data.country_name);
+        if (detected) setCountryCode(detected.code);
       }
-      if (CURRENCIES[data.currency]) {
+      if (!profile?.currency && CURRENCIES[data.currency]) {
         setForm(f => ({ ...f, fromCurrency: data.currency, receiveCurrency: data.currency }));
       }
     } catch {
-      // keep defaults if detection fails
+      // keep profile/defaults if detection fails
     }
   };
 
@@ -386,7 +405,17 @@ export default function SendMoney() {
           </p>
           {charge > 0 && <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 32 }}>Fee: {formatCharge(charge)} {form.fromCurrency}</p>}
           <button className="btn-primary" onClick={() => navigate('/')} style={{ width: '100%' }}>Back to Home</button>
-          <button className="btn-secondary" onClick={() => { setSuccess(null); setForm({ phone: '', amount: '', note: '', fromCurrency: 'KES', receiveCurrency: 'KES' }); }} style={{ width: '100%', marginTop: 12 }}>Send Again</button>
+          <button className="btn-secondary" onClick={() => {
+            setSuccess(null);
+            // ── Fix: reset to profile currency instead of hardcoded KES ──
+            setForm({
+              phone: '',
+              amount: '',
+              note: '',
+              fromCurrency: profile?.currency || 'KES',
+              receiveCurrency: profile?.currency || 'KES',
+            });
+          }} style={{ width: '100%', marginTop: 12 }}>Send Again</button>
         </div>
         <BottomNav />
       </div>
