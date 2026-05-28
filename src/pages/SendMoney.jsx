@@ -261,7 +261,7 @@ export default function SendMoney() {
         setForm(f => ({ ...f, fromCurrency: data.currency, receiveCurrency: data.currency }));
       }
     } catch {
-      // keep profile/defaults if detection fails
+      // keep profile/defaults
     }
   };
 
@@ -352,7 +352,7 @@ export default function SendMoney() {
     setShowPin(false);
     setLoading(true);
 
-    // ── Find receiver (fetch fresh including balance) ─────────────────────────
+    // Find receiver
     const { data: receiver } = await supabase
       .from('profiles')
       .select('id, full_name, balance')
@@ -361,57 +361,33 @@ export default function SendMoney() {
 
     if (!receiver) { setError('Recipient not found on PesaYetu'); setLoading(false); return; }
 
-    // ── Deduct sender wallet ──────────────────────────────────────────────────
-    if (fromWallet) {
-      await supabase.from('currency_wallets')
-        .update({ balance: fromWallet.balance - total })
-        .eq('user_id', profile.id)
-        .eq('currency', form.fromCurrency);
-    } else {
-      await supabase.from('currency_wallets')
-        .insert({ user_id: profile.id, currency: form.fromCurrency, balance: -total });
+    // Atomic transfer via RPC
+    const { data: transferResult, error: transferError } = await supabase.rpc('transfer_currency', {
+      p_sender_id: profile.id,
+      p_receiver_id: receiver.id,
+      p_send_amount: total,
+      p_send_currency: form.fromCurrency,
+      p_receive_amount: receiverGets,
+      p_receive_currency: form.receiveCurrency,
+      p_exchange_rate: rate,
+      p_charge: charge,
+      p_note: form.note || null,
+    });
+
+    if (transferError || !transferResult?.success) {
+      setError('Transfer failed. Please try again.');
+      setLoading(false);
+      return;
     }
 
-    // ── Credit receiver wallet ────────────────────────────────────────────────
-    const { data: receiverWallet } = await supabase
-      .from('currency_wallets')
-      .select('*')
-      .eq('user_id', receiver.id)
-      .eq('currency', form.receiveCurrency)
-      .single();
-
-    if (receiverWallet) {
-      await supabase.from('currency_wallets')
-        .update({ balance: receiverWallet.balance + receiverGets })
-        .eq('user_id', receiver.id)
-        .eq('currency', form.receiveCurrency);
-    } else {
-      await supabase.from('currency_wallets')
-        .insert({ user_id: receiver.id, currency: form.receiveCurrency, balance: receiverGets });
-    }
-
-    // ── Update profiles.balance for both (using fresh receiver.balance) ───────
+    // Update profiles.balance for both
     await supabase.from('profiles')
       .update({ balance: (profile.balance || 0) - total })
       .eq('id', profile.id);
 
     await supabase.from('profiles')
-      .update({ balance: (receiver.balance || 0) + receiverGets })  // ✅ fixed
+      .update({ balance: (receiver.balance || 0) + receiverGets })
       .eq('id', receiver.id);
-
-    // ── Insert single transaction record into 'transactions' table ────────────
-    await supabase.from('transactions').insert({   // ✅ was 'currency_transactions'
-      sender_id: profile.id,
-      receiver_id: receiver.id,
-      amount: amount,
-      currency: form.fromCurrency,
-      receive_amount: receiverGets,
-      receive_currency: form.receiveCurrency,
-      exchange_rate: rate,
-      charge: charge,
-      type: 'send',
-      note: form.note || null,
-    });
 
     await refreshProfile();
     await fetchWallets();
@@ -436,13 +412,7 @@ export default function SendMoney() {
           <button className="btn-primary" onClick={() => navigate('/')} style={{ width: '100%' }}>Back to Home</button>
           <button className="btn-secondary" onClick={() => {
             setSuccess(null);
-            setForm({
-              phone: '',
-              amount: '',
-              note: '',
-              fromCurrency: profile?.currency || 'KES',
-              receiveCurrency: profile?.currency || 'KES',
-            });
+            setForm({ phone: '', amount: '', note: '', fromCurrency: profile?.currency || 'KES', receiveCurrency: profile?.currency || 'KES' });
           }} style={{ width: '100%', marginTop: 12 }}>Send Again</button>
         </div>
         <BottomNav />
@@ -483,8 +453,7 @@ export default function SendMoney() {
                   <select
                     value={countryCode}
                     onChange={(e) => { setCountryCode(e.target.value); if (form.phone.length >= 9) lookupReceiver(form.phone); }}
-                    style={{ appearance: 'none', WebkitAppearance: 'none', padding: '12px 32px 12px 12px', background: 'var(--surface2)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif', fontSize: 14, outline: 'none', cursor: 'pointer', minWidth: 90 }}
-                  >
+                    style={{ appearance: 'none', WebkitAppearance: 'none', padding: '12px 32px 12px 12px', background: 'var(--surface2)', border: '1.5px solid var(--border)', borderRadius: 10, color: 'var(--text)', fontFamily: 'Plus Jakarta Sans, sans-serif', fontSize: 14, outline: 'none', cursor: 'pointer', minWidth: 90 }}>
                     {COUNTRY_CODES.map(c => (
                       <option key={c.code + c.name} value={c.code}>{c.flag} {c.code}</option>
                     ))}
