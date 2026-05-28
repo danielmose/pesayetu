@@ -28,16 +28,19 @@ export default function Dashboard() {
   }, [profile?.id]);
 
   const fetchTransactions = async () => {
+    if (!profile?.id) return;
+
     const { data, error } = await supabase
-      .from('currency_transactions')
+      .from('transactions')   // ✅ fixed: was 'currency_transactions'
       .select(`
         *,
-        sender:sender_id(full_name),
-        receiver:receiver_id(full_name)
+        sender:sender_id(id, full_name, phone),
+        receiver:receiver_id(id, full_name, phone)
       `)
-      .or(`sender_id.eq.${profile?.id},receiver_id.eq.${profile?.id}`)
+      .or(`sender_id.eq.${profile.id},receiver_id.eq.${profile.id}`)
       .order('created_at', { ascending: false })
       .limit(5);
+
     if (!error) setTransactions(data || []);
     setTxLoading(false);
   };
@@ -50,7 +53,6 @@ export default function Dashboard() {
     setWallets(data || []);
   };
 
-  // Get total balance in KES (main wallet)
   const kesWallet = wallets.find(w => w.currency === 'KES');
   const displayBalance = kesWallet ? kesWallet.balance : (profile?.balance || 0);
 
