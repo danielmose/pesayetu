@@ -279,15 +279,25 @@ export default function SendMoney() {
 
   const fromWallet = wallets.find(w => w.currency === form.fromCurrency);
   const fromBalance = fromWallet ? fromWallet.balance : 0;
-  const fullPhone = form.phone ? `${countryCode}${form.phone.replace(/^0/, '')}` : '';
+
+  // Build all possible phone formats for lookup
+  const buildPhoneVariants = (phone, dialCode) => {
+    const stripped = phone.replace(/^0/, '');
+    return [
+      `${dialCode}${stripped}`,  // +254712345678
+      `0${stripped}`,             // 0712345678
+      phone,                      // whatever was typed
+    ];
+  };
 
   const lookupReceiver = async (phone) => {
-    const full = `${countryCode}${phone.replace(/^0/, '')}`;
     if (phone.length >= 9) {
+      const variants = buildPhoneVariants(phone, countryCode);
+      const orQuery = variants.map(v => `phone.eq.${v}`).join(',');
       const { data } = await supabase
         .from('profiles')
         .select('full_name, phone')
-        .or(`phone.eq.${full},phone.eq.${phone}`)
+        .or(orQuery)
         .single();
       setReceiverInfo(data || null);
     } else {
@@ -352,11 +362,13 @@ export default function SendMoney() {
     setShowPin(false);
     setLoading(true);
 
-    // Find receiver
+    // Find receiver using all phone variants
+    const variants = buildPhoneVariants(form.phone, countryCode);
+    const orQuery = variants.map(v => `phone.eq.${v}`).join(',');
     const { data: receiver } = await supabase
       .from('profiles')
       .select('id, full_name, balance')
-      .or(`phone.eq.${fullPhone},phone.eq.${form.phone}`)
+      .or(orQuery)
       .single();
 
     if (!receiver) { setError('Recipient not found on PesaYetu'); setLoading(false); return; }
@@ -384,7 +396,6 @@ export default function SendMoney() {
     await supabase.from('profiles')
       .update({ balance: (profile.balance || 0) - total })
       .eq('id', profile.id);
-
     await supabase.from('profiles')
       .update({ balance: (receiver.balance || 0) + receiverGets })
       .eq('id', receiver.id);
