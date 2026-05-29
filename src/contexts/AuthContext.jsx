@@ -32,7 +32,23 @@ export const AuthProvider = ({ children }) => {
       .select('*')
       .eq('id', userId)
       .single();
-    if (!error) setProfile(data);
+
+    if (!error && data) {
+      // If PIN missing in profiles but exists in auth metadata, write it now
+      const { data: authData } = await supabase.auth.getUser();
+      const metaPin = authData?.user?.user_metadata?.transaction_pin;
+
+      if (!data.transaction_pin && metaPin) {
+        await supabase
+          .from('profiles')
+          .update({ transaction_pin: metaPin })
+          .eq('id', userId);
+        data.transaction_pin = metaPin;
+      }
+
+      setProfile(data);
+    }
+
     setLoading(false);
   };
 
