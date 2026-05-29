@@ -9,14 +9,12 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) fetchProfile(session.user.id);
       else setLoading(false);
     });
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) fetchProfile(session.user.id);
@@ -34,7 +32,6 @@ export const AuthProvider = ({ children }) => {
       .single();
 
     if (!error && data) {
-      // If PIN missing in profiles but exists in auth metadata, write it now
       const { data: authData } = await supabase.auth.getUser();
       const metaPin = authData?.user?.user_metadata?.transaction_pin;
 
@@ -56,15 +53,23 @@ export const AuthProvider = ({ children }) => {
     if (user) await fetchProfile(user.id);
   };
 
-  const register = async ({ fullName, phone, email, password }) => {
-    const { error } = await supabase.auth.signUp({
+  const register = async ({ fullName, phone, email, password, selectedCountry, pinStr }) => {
+    const { error: regError, data } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { full_name: fullName, phone }
+        data: {
+          full_name: fullName,
+          phone,
+          country: selectedCountry.name,
+          dial_code: selectedCountry.dialCode,
+          currency: selectedCountry.currency,
+          currency_symbol: selectedCountry.symbol,
+          transaction_pin: btoa(pinStr),
+        }
       }
     });
-    return { error };
+    return { error: regError, data };
   };
 
   const login = async ({ email, password }) => {
