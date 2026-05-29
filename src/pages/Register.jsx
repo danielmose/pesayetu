@@ -242,16 +242,12 @@ export default function Register() {
           c.name.toLowerCase().includes(data.country_name.toLowerCase()) ||
           data.country_name.toLowerCase().includes(c.name.toLowerCase())
         );
-        if (match) {
-          setSelectedCountry(match);
-          setDropdownOpen(false);
-        } else {
-          setLocationError(`Detected "${data.country_name}" — please select manually`);
-        }
+        if (match) { setSelectedCountry(match); setDropdownOpen(false); }
+        else setLocationError(`Detected "${data.country_name}" — please select manually`);
       } else {
         setLocationError('Could not detect location. Please select manually.');
       }
-    } catch (err) {
+    } catch {
       setLocationError('Detection failed. Please select manually.');
     }
     setDetectingLocation(false);
@@ -290,7 +286,7 @@ export default function Register() {
     setError('');
     if (!selectedCountry) { setError('Please select your country'); return; }
     const phone = form.phone.replace(/\s/g, '');
-    const dialNoPlus = selectedCountry.dialCode.replace('+', '').replace('-', '');
+    const dialNoPlus = selectedCountry.dialCode.replace('+', '').replace(/-/g, '');
     const localPattern = new RegExp(`^(0\\d{7,11}|\\+${dialNoPlus}\\d{6,11}|${dialNoPlus}\\d{6,11})$`);
     if (!localPattern.test(phone)) {
       setError(`Enter a valid phone number for ${selectedCountry.name} (e.g. ${selectedCountry.dialCode}XXXXXXXXX)`);
@@ -309,13 +305,23 @@ export default function Register() {
 
     setLoading(true);
 
+    // Normalize phone to international format
+    const rawPhone = form.phone.replace(/\s/g, '');
+    const dialClean = selectedCountry.dialCode.replace(/-/g, '');
+    let normalizedPhone = rawPhone;
+    if (rawPhone.startsWith('0')) {
+      normalizedPhone = dialClean + rawPhone.slice(1);
+    } else if (!rawPhone.startsWith('+')) {
+      normalizedPhone = dialClean + rawPhone;
+    }
+
     const { error: regError, data } = await supabase.auth.signUp({
       email: form.email,
       password: form.password,
       options: {
         data: {
           full_name: form.fullName,
-          phone: form.phone,
+          phone: normalizedPhone,
           country: selectedCountry.name,
           dial_code: selectedCountry.dialCode,
           currency: selectedCountry.currency,
@@ -327,19 +333,28 @@ export default function Register() {
     if (regError) { setError(regError.message); setLoading(false); return; }
 
     if (data.user) {
-      await supabase.from('profiles').update({
-        transaction_pin: btoa(pinStr),
-        country: selectedCountry.name,
-        dial_code: selectedCountry.dialCode,
-        currency: selectedCountry.currency,
-        currency_symbol: selectedCountry.symbol,
-      }).eq('id', data.user.id);
+      // Retry up to 3 times waiting for profile trigger to create the row
+      let updated = false;
+      for (let i = 0; i < 3; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        const { error: updateError } = await supabase.from('profiles').update({
+          transaction_pin: btoa(pinStr),
+          phone: normalizedPhone,
+          full_name: form.fullName,
+          country: selectedCountry.name,
+          dial_code: selectedCountry.dialCode,
+          currency: selectedCountry.currency,
+          currency_symbol: selectedCountry.symbol,
+        }).eq('id', data.user.id);
 
-      await supabase.from('currency_wallets').insert({
+        if (!updateError) { updated = true; break; }
+      }
+
+      await supabase.from('currency_wallets').upsert({
         user_id: data.user.id,
         currency: selectedCountry.currency,
         balance: 0
-      });
+      }, { onConflict: 'user_id,currency' });
     }
 
     setSuccess('Account created! Check your email to confirm, then sign in.');
@@ -364,15 +379,10 @@ export default function Register() {
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 32 }}>
         {[1, 2, 3].map(s => (
-          <div key={s} style={{
-            flex: 1, height: 4, borderRadius: 2,
-            background: step >= s ? 'var(--green)' : 'var(--border)',
-            transition: 'background 0.3s'
-          }} />
+          <div key={s} style={{ flex: 1, height: 4, borderRadius: 2, background: step >= s ? 'var(--green)' : 'var(--border)', transition: 'background 0.3s' }} />
         ))}
       </div>
 
-      {/* STEP 1 */}
       {step === 1 && (
         <>
           <div className="auth-heading">
@@ -406,32 +416,19 @@ export default function Register() {
               <label>Password</label>
               <div className="input-wrapper">
                 <Lock />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  name="password"
-                  placeholder="At least 6 characters"
-                  value={form.password}
-                  onChange={handleChange}
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0 4px', display: 'flex', alignItems: 'center' }}
-                >
+                <input type={showPassword ? 'text' : 'password'} name="password" placeholder="At least 6 characters" value={form.password} onChange={handleChange} required />
+                <button type="button" onClick={() => setShowPassword(!showPassword)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0 4px', display: 'flex', alignItems: 'center' }}>
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
             </div>
             <button type="submit" className="btn-primary">Next →</button>
-            <div className="auth-footer">
-              Already have an account? <Link to="/login">Sign in</Link>
-            </div>
+            <div className="auth-footer">Already have an account? <Link to="/login">Sign in</Link></div>
           </form>
         </>
       )}
 
-      {/* STEP 2 */}
       {step === 2 && (
         <>
           <div className="auth-heading">
@@ -440,18 +437,13 @@ export default function Register() {
           </div>
           <form className="auth-form" onSubmit={handleStep2}>
             {error && <div className="alert alert-error">{error}</div>}
-
             <button type="button" onClick={detectLocation} disabled={detectingLocation}
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', padding: '11px 16px', marginBottom: 12, background: 'transparent', border: '2px dashed var(--border)', borderRadius: 12, color: 'var(--text-muted)', cursor: detectingLocation ? 'not-allowed' : 'pointer', fontSize: 14, transition: 'all 0.2s' }}
               onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--green)'; e.currentTarget.style.color = 'var(--green)'; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)'; }}>
-              {detectingLocation
-                ? <><Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> Detecting location...</>
-                : <><MapPin size={16} /> Auto-detect my country</>}
+              {detectingLocation ? <><Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> Detecting location...</> : <><MapPin size={16} /> Auto-detect my country</>}
             </button>
-
             {locationError && <div style={{ fontSize: 12, color: '#f87171', marginBottom: 8, textAlign: 'center' }}>{locationError}</div>}
-
             <div className="input-group">
               <label>Country</label>
               <div onClick={() => setDropdownOpen(!dropdownOpen)}
@@ -469,7 +461,6 @@ export default function Register() {
                 )}
                 <ChevronDown size={18} style={{ color: 'var(--text-muted)', transform: dropdownOpen ? 'rotate(180deg)' : 'none', transition: '0.2s' }} />
               </div>
-
               {dropdownOpen && (
                 <div style={{ marginTop: 6, borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface2)', maxHeight: 300, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.3)', position: 'relative', zIndex: 10 }}>
                   <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--surface2)' }}>
@@ -497,14 +488,9 @@ export default function Register() {
                 </div>
               )}
             </div>
-
             {selectedCountry && (
               <div style={{ padding: '14px 16px', borderRadius: 12, background: 'rgba(0,200,100,0.07)', border: '1px solid rgba(0,200,100,0.25)', display: 'flex', gap: 0 }}>
-                {[
-                  { label: 'DIAL CODE', value: selectedCountry.dialCode },
-                  { label: 'CURRENCY', value: selectedCountry.currency },
-                  { label: 'SYMBOL', value: selectedCountry.symbol },
-                ].map((item, i, arr) => (
+                {[{ label: 'DIAL CODE', value: selectedCountry.dialCode }, { label: 'CURRENCY', value: selectedCountry.currency }, { label: 'SYMBOL', value: selectedCountry.symbol }].map((item, i, arr) => (
                   <React.Fragment key={item.label}>
                     <div style={{ flex: 1, textAlign: 'center' }}>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>{item.label}</div>
@@ -515,14 +501,12 @@ export default function Register() {
                 ))}
               </div>
             )}
-
             <button type="submit" className="btn-primary">Next →</button>
             <button type="button" className="btn-secondary" onClick={() => setStep(1)}>← Back</button>
           </form>
         </>
       )}
 
-      {/* STEP 3 */}
       {step === 3 && (
         <>
           <div className="auth-heading">
@@ -556,9 +540,7 @@ export default function Register() {
                 ))}
               </div>
             </div>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>
-              🔒 Your PIN is used to authorize all transactions
-            </p>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>🔒 Your PIN is used to authorize all transactions</p>
             <button type="submit" className="btn-primary" disabled={loading}>
               {loading ? 'Creating account...' : 'Create Account'}
             </button>
