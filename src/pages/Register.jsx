@@ -333,22 +333,24 @@ export default function Register() {
     if (regError) { setError(regError.message); setLoading(false); return; }
 
     if (data.user) {
-      await new Promise(r => setTimeout(r, 1500));
+      // Wait for Supabase auth trigger to create profile row
+      await new Promise(r => setTimeout(r, 2000));
 
-      const { error: fnError } = await supabase.rpc('create_profile', {
-        p_id: data.user.id,
-        p_full_name: form.fullName,
-        p_phone: normalizedPhone,
-        p_email: form.email,
-        p_country: selectedCountry.name,
-        p_dial_code: selectedCountry.dialCode,
-        p_currency: selectedCountry.currency,
-        p_currency_symbol: selectedCountry.symbol,
-        p_transaction_pin: btoa(pinStr),
-      });
+      const { error: upsertError } = await supabase.from('profiles').upsert({
+        id: data.user.id,
+        full_name: form.fullName,
+        email: form.email,
+        phone: normalizedPhone,
+        transaction_pin: btoa(pinStr),
+        country: selectedCountry.name,
+        dial_code: selectedCountry.dialCode,
+        currency: selectedCountry.currency,
+        currency_symbol: selectedCountry.symbol,
+        balance: 0,
+      }, { onConflict: 'id' });
 
-      if (fnError) {
-        setError('Database error saving new user');
+      if (upsertError) {
+        setError('Error saving profile: ' + upsertError.message);
         setLoading(false);
         return;
       }
@@ -419,7 +421,14 @@ export default function Register() {
               <label>Password</label>
               <div className="input-wrapper">
                 <Lock />
-                <input type={showPassword ? 'text' : 'password'} name="password" placeholder="At least 6 characters" value={form.password} onChange={handleChange} required />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  placeholder="At least 6 characters"
+                  value={form.password}
+                  onChange={handleChange}
+                  required
+                />
                 <button type="button" onClick={() => setShowPassword(!showPassword)}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '0 4px', display: 'flex', alignItems: 'center' }}>
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
