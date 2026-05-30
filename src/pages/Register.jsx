@@ -326,6 +326,7 @@ export default function Register() {
           dial_code: selectedCountry.dialCode,
           currency: selectedCountry.currency,
           currency_symbol: selectedCountry.symbol,
+          transaction_pin: btoa(pinStr),
         }
       }
     });
@@ -333,27 +334,33 @@ export default function Register() {
     if (regError) { setError(regError.message); setLoading(false); return; }
 
     if (data.user) {
-      // Retry up to 3 times waiting for profile trigger to create the row
-      let updated = false;
-      for (let i = 0; i < 3; i++) {
-        await new Promise(r => setTimeout(r, 1000));
-        const { error: updateError } = await supabase.from('profiles').update({
-          transaction_pin: btoa(pinStr),
-          phone: normalizedPhone,
-          full_name: form.fullName,
-          country: selectedCountry.name,
-          dial_code: selectedCountry.dialCode,
-          currency: selectedCountry.currency,
-          currency_symbol: selectedCountry.symbol,
-        }).eq('id', data.user.id);
+      // Wait for trigger then upsert — creates row if trigger hasn't fired yet
+      await new Promise(r => setTimeout(r, 1500));
 
-        if (!updateError) { updated = true; break; }
+      const { error: upsertError } = await supabase.from('profiles').upsert({
+        id: data.user.id,
+        full_name: form.fullName,
+        phone: normalizedPhone,
+        email: form.email,
+        country: selectedCountry.name,
+        dial_code: selectedCountry.dialCode,
+        currency: selectedCountry.currency,
+        currency_symbol: selectedCountry.symbol,
+        transaction_pin: btoa(pinStr),
+        balance: 0,
+        role: 'user',
+      }, { onConflict: 'id' });
+
+      if (upsertError) {
+        setError('Database error saving new user');
+        setLoading(false);
+        return;
       }
 
       await supabase.from('currency_wallets').upsert({
         user_id: data.user.id,
         currency: selectedCountry.currency,
-        balance: 0
+        balance: 0,
       }, { onConflict: 'user_id,currency' });
     }
 
