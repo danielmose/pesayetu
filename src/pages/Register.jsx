@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { User, Phone, Mail, Lock, Globe, ChevronDown, MapPin, Loader, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -305,7 +305,6 @@ export default function Register() {
 
     setLoading(true);
 
-    // Normalize phone to international format
     const rawPhone = form.phone.replace(/\s/g, '');
     const dialClean = selectedCountry.dialCode.replace(/-/g, '');
     let normalizedPhone = rawPhone;
@@ -334,24 +333,21 @@ export default function Register() {
     if (regError) { setError(regError.message); setLoading(false); return; }
 
     if (data.user) {
-      // Wait for trigger then upsert — creates row if trigger hasn't fired yet
       await new Promise(r => setTimeout(r, 1500));
 
-      const { error: upsertError } = await supabase.from('profiles').upsert({
-        id: data.user.id,
-        full_name: form.fullName,
-        phone: normalizedPhone,
-        email: form.email,
-        country: selectedCountry.name,
-        dial_code: selectedCountry.dialCode,
-        currency: selectedCountry.currency,
-        currency_symbol: selectedCountry.symbol,
-        transaction_pin: btoa(pinStr),
-        balance: 0,
-        role: 'user',
-      }, { onConflict: 'id' });
+      const { error: fnError } = await supabase.rpc('create_profile', {
+        p_id: data.user.id,
+        p_full_name: form.fullName,
+        p_phone: normalizedPhone,
+        p_email: form.email,
+        p_country: selectedCountry.name,
+        p_dial_code: selectedCountry.dialCode,
+        p_currency: selectedCountry.currency,
+        p_currency_symbol: selectedCountry.symbol,
+        p_transaction_pin: btoa(pinStr),
+      });
 
-      if (upsertError) {
+      if (fnError) {
         setError('Database error saving new user');
         setLoading(false);
         return;
@@ -374,7 +370,7 @@ export default function Register() {
     background: 'var(--surface2)',
     border: digit ? '2px solid var(--green)' : '2px solid var(--border)',
     borderRadius: 12, color: 'var(--text)',
-    outline: 'none', fontFamily: 'Space Mono, monospace'
+    outline: 'none', fontFamily: 'Space Mono, monospace',
   });
 
   return (
@@ -547,7 +543,9 @@ export default function Register() {
                 ))}
               </div>
             </div>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>🔒 Your PIN is used to authorize all transactions</p>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center' }}>
+              🔒 Your PIN is used to authorize all transactions
+            </p>
             <button type="submit" className="btn-primary" disabled={loading}>
               {loading ? 'Creating account...' : 'Create Account'}
             </button>
