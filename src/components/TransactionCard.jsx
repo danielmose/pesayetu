@@ -14,14 +14,29 @@ export default function TransactionCard({ tx, currentUserId, onReverse }) {
   const isActuallyReceive = tx.type === 'send' && tx.receiver_id === currentUserId;
   const isDeposit = tx.type === 'deposit';
   const isWithdraw = tx.type === 'withdraw';
+  const isReceiveType = tx.type === 'receive' && tx.receiver_id === currentUserId;
+  const isReversal = tx.note === 'Reversal of transaction' || tx.note === 'Admin approved reversal';
 
-  const isPositive = isActuallyReceive || isDeposit;
+  const isPositive = isActuallyReceive || isDeposit || isReceiveType;
   const sign = isPositive ? '+' : '-';
-  const displayType = isActuallyReceive ? 'receive' : tx.type;
+  const displayType = (isActuallyReceive || isReceiveType) ? 'receive' : tx.type;
   const Icon = icons[displayType] || ArrowUpRight;
 
-  const amount = isActuallySend ? tx.amount : isActuallyReceive ? tx.receive_amount : tx.amount;
-  const currency = isActuallySend ? tx.currency : isActuallyReceive ? tx.receive_currency : tx.currency;
+  const amount = isActuallySend
+    ? tx.amount
+    : isActuallyReceive
+    ? tx.receive_amount
+    : isReceiveType
+    ? tx.receive_amount || tx.amount
+    : tx.amount;
+
+  const currency = isActuallySend
+    ? tx.currency
+    : isActuallyReceive
+    ? tx.receive_currency
+    : isReceiveType
+    ? tx.receive_currency || tx.currency
+    : tx.currency;
 
   const [dispute, setDispute] = useState(null);
   const [showDisputeForm, setShowDisputeForm] = useState(false);
@@ -54,6 +69,7 @@ export default function TransactionCard({ tx, currentUserId, onReverse }) {
   const getLabel = () => {
     if (isActuallySend) return `To: ${tx.receiver?.full_name || 'Unknown'}`;
     if (isActuallyReceive) return `From: ${tx.sender?.full_name || 'Unknown'}`;
+    if (isReceiveType) return isReversal ? '↩ Reversal Received' : `From: ${tx.sender?.full_name || 'Unknown'}`;
     if (isDeposit) return 'Deposit';
     if (isWithdraw) return 'Withdrawal';
     return tx.type;
@@ -163,7 +179,7 @@ export default function TransactionCard({ tx, currentUserId, onReverse }) {
       {/* Dispute status badge */}
       {getDisputeStatusBadge()}
 
-      {/* Sender dispute info */}
+      {/* Dispute details */}
       {dispute && (
         <div style={{
           marginTop: 8, padding: '8px 10px', borderRadius: 8,
