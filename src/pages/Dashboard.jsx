@@ -73,21 +73,26 @@ export default function Dashboard() {
           {/* Frozen funds notice */}
           {frozenBalance > 0 && (
             <div style={{
-              marginTop: 10,
-              background: 'rgba(68,138,255,0.15)',
-              border: '1px solid rgba(68,138,255,0.3)',
-              borderRadius: 8,
-              padding: '6px 12px',
-              fontSize: 12,
-              color: '#448aff',
-              fontFamily: 'Space Mono, monospace',
+              marginTop: 12,
+              background: '#1a0000',
+              border: '2px solid #ff4444',
+              borderRadius: 10,
+              padding: '10px 14px',
             }}>
-              🔒 {profile?.currency || 'KES'} {formatBalance(frozenBalance)} frozen
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#ff4444', letterSpacing: 1, marginBottom: 4 }}>
+                🔒 FUNDS FROZEN
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#fff', fontFamily: 'Space Mono, monospace' }}>
+                {profile?.currency || 'KES'} {formatBalance(frozenBalance)}
+              </div>
               {profile?.freeze_reason && (
-                <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>
+                <div style={{ fontSize: 12, color: '#ffaaaa', marginTop: 4 }}>
                   Reason: {profile.freeze_reason}
                 </div>
               )}
+              <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+                Contact support to resolve this issue.
+              </div>
             </div>
           )}
 
