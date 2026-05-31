@@ -122,8 +122,16 @@ export default function Support() {
       setPressedMsg(msg.id);
     }, 400);
   };
-  const handlePressEnd = () => {
+  const handlePressEnd = (msg) => {
+    // Only clear if it hasn't fired yet (short tap = dismiss, long press = show menu)
     clearTimeout(pressTimer.current);
+  };
+  const handleTouchEnd = (msg) => {
+    // Don't clear — let the timeout fire for long press
+    // Only dismiss if already showing options for this message
+    if (pressedMsg === msg.id) {
+      // already showing, do nothing on touchend
+    }
   };
 
   const deleteForMe = (msgId) => {
@@ -233,9 +241,9 @@ export default function Support() {
                 <div key={msg.id}
                   style={{ display: 'flex', flexDirection: 'column', alignItems: isMine ? 'flex-end' : 'flex-start' }}
                   onMouseDown={() => handlePressStart(msg)}
-                  onMouseUp={handlePressEnd}
+                  onMouseUp={() => handlePressEnd(msg)}
                   onTouchStart={() => handlePressStart(msg)}
-                  onTouchEnd={handlePressEnd}
+                  onTouchEnd={() => handleTouchEnd(msg)}
                   onClick={e => e.stopPropagation()}
                 >
                   <div style={{
