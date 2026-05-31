@@ -314,6 +314,7 @@ export default function Register() {
       normalizedPhone = dialClean + rawPhone;
     }
 
+    // signUp with all data in metadata — trigger will create the profile row
     const { error: regError, data } = await supabase.auth.signUp({
       email: form.email,
       password: form.password,
@@ -332,34 +333,19 @@ export default function Register() {
 
     if (regError) { setError(regError.message); setLoading(false); return; }
 
+    // Create the default currency wallet
+    // This uses service role via trigger or anon insert — if it fails, wallet is created on first login
     if (data.user) {
-      // Wait for Supabase auth trigger to create profile row
-      await new Promise(r => setTimeout(r, 2000));
-
-      const { error: upsertError } = await supabase.from('profiles').upsert({
-        id: data.user.id,
-        full_name: form.fullName,
-        email: form.email,
-        phone: normalizedPhone,
-        transaction_pin: btoa(pinStr),
-        country: selectedCountry.name,
-        dial_code: selectedCountry.dialCode,
-        currency: selectedCountry.currency,
-        currency_symbol: selectedCountry.symbol,
-        balance: 0,
-      }, { onConflict: 'id' });
-
-      if (upsertError) {
-        setError('Error saving profile: ' + upsertError.message);
-        setLoading(false);
-        return;
-      }
-
-      await supabase.from('currency_wallets').upsert({
+      const { error: walletError } = await supabase.from('currency_wallets').insert({
         user_id: data.user.id,
         currency: selectedCountry.currency,
         balance: 0,
-      }, { onConflict: 'user_id,currency' });
+      });
+
+      // Wallet insert may fail if session not active yet — that's okay, handle on login
+      if (walletError) {
+        console.warn('Wallet creation deferred:', walletError.message);
+      }
     }
 
     setSuccess('Account created! Check your email to confirm, then sign in.');
