@@ -242,6 +242,7 @@ export default function SendMoney() {
   }, [profile]);
 
   const fetchWallets = async () => {
+    if (!profile?.id) return;
     const { data } = await supabase
       .from('currency_wallets')
       .select('*')
@@ -278,15 +279,18 @@ export default function SendMoney() {
     : 1;
 
   const fromWallet = wallets.find(w => w.currency === form.fromCurrency);
-  const fromBalance = fromWallet ? fromWallet.balance : 0;
 
-  // Build all possible phone formats for lookup
+  // ✅ Subtract frozen balance so frozen funds cannot be spent
+  const frozenAmount = profile?.frozen_balance || 0;
+  const rawBalance = fromWallet ? fromWallet.balance : 0;
+  const fromBalance = Math.max(0, rawBalance - (form.fromCurrency === (profile?.currency || 'KES') ? frozenAmount : 0));
+
   const buildPhoneVariants = (phone, dialCode) => {
     const stripped = phone.replace(/^0/, '');
     return [
-      `${dialCode}${stripped}`,  // +254712345678
-      `0${stripped}`,             // 0712345678
-      phone,                      // whatever was typed
+      `${dialCode}${stripped}`,
+      `0${stripped}`,
+      phone,
     ];
   };
 
@@ -362,7 +366,6 @@ export default function SendMoney() {
     setShowPin(false);
     setLoading(true);
 
-    // Find receiver using all phone variants
     const variants = buildPhoneVariants(form.phone, countryCode);
     const orQuery = variants.map(v => `phone.eq.${v}`).join(',');
     const { data: receiver } = await supabase
@@ -373,26 +376,25 @@ export default function SendMoney() {
 
     if (!receiver) { setError('Recipient not found on PesaYetu'); setLoading(false); return; }
 
-    // Atomic transfer via RPC
     const { data: transferResult, error: transferError } = await supabase.rpc('transfer_currency', {
-      p_sender_id: profile.id,
-      p_receiver_id: receiver.id,
-      p_send_amount: total,
-      p_send_currency: form.fromCurrency,
-      p_receive_amount: receiverGets,
+      p_sender_id:        profile.id,
+      p_receiver_id:      receiver.id,
+      p_send_amount:      total,
+      p_send_currency:    form.fromCurrency,
+      p_receive_amount:   receiverGets,
       p_receive_currency: form.receiveCurrency,
-      p_exchange_rate: rate,
-      p_charge: charge,
-      p_note: form.note || null,
+      p_exchange_rate:    rate,
+      p_charge:           charge,
+      p_note:             form.note || null,
     });
 
     if (transferError || !transferResult?.success) {
-      setError('Transfer failed. Please try again.');
+      setError(transferResult?.message || 'Transfer failed. Please try again.');
       setLoading(false);
       return;
     }
 
-    // Update profiles.balance for both
+    // Sync profiles.balance for both users
     await supabase.from('profiles')
       .update({ balance: (profile.balance || 0) - total })
       .eq('id', profile.id);
@@ -453,7 +455,12 @@ export default function SendMoney() {
                 ))}
               </select>
               <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                Balance: {CURRENCIES[form.fromCurrency]?.symbol} {Number(fromBalance).toLocaleString('en', { minimumFractionDigits: 2 })}
+                Spendable: {CURRENCIES[form.fromCurrency]?.symbol} {Number(fromBalance).toLocaleString('en', { minimumFractionDigits: 2 })}
+                {frozenAmount > 0 && form.fromCurrency === (profile?.currency || 'KES') && (
+                  <span style={{ color: '#448aff', marginLeft: 6 }}>
+                    (🔒 {Number(frozenAmount).toLocaleString('en', { minimumFractionDigits: 2 })} frozen)
+                  </span>
+                )}
               </div>
             </div>
 
