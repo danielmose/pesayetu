@@ -15,29 +15,24 @@ export default function Dashboard() {
   const [wallets, setWallets] = useState([]);
 
   useEffect(() => {
-    const init = async () => {
-      await refreshProfile();
-      fetchTransactions();
-    };
-    init();
+    refreshProfile();
   }, []);
 
   useEffect(() => {
     if (!profile?.id) return;
+    fetchTransactions(profile.id);
     fetchWallets(profile.id);
   }, [profile?.id]);
 
-  const fetchTransactions = async () => {
-    if (!profile?.id) return;
-
+  const fetchTransactions = async (userId) => {
     const { data, error } = await supabase
-      .from('transactions')   // ✅ fixed: was 'currency_transactions'
+      .from('transactions')
       .select(`
         *,
         sender:sender_id(id, full_name, phone),
         receiver:receiver_id(id, full_name, phone)
       `)
-      .or(`sender_id.eq.${profile.id},receiver_id.eq.${profile.id}`)
+      .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
       .order('created_at', { ascending: false })
       .limit(5);
 
@@ -53,12 +48,13 @@ export default function Dashboard() {
     setWallets(data || []);
   };
 
-  const kesWallet = wallets.find(w => w.currency === 'KES');
-  const displayBalance = kesWallet ? kesWallet.balance : (profile?.balance || 0);
+  // ✅ Use profiles.balance as single source of truth (matches admin view)
+  const displayBalance = profile?.balance || 0;
+  const frozenBalance = profile?.frozen_balance || 0;
+  const spendableBalance = Math.max(0, displayBalance - frozenBalance);
 
-  const formatBalance = (bal) => {
-    return Number(bal || 0).toLocaleString('en-KE', { minimumFractionDigits: 2 });
-  };
+  const formatBalance = (bal) =>
+    Number(bal || 0).toLocaleString('en-KE', { minimumFractionDigits: 2 });
 
   return (
     <div className="app-layout">
@@ -69,22 +65,45 @@ export default function Dashboard() {
         <div className="balance-card">
           <div className="balance-label">Available Balance</div>
           <div className="balance-amount">
-            <span className="balance-currency">KES </span>
-            {formatBalance(displayBalance)}
+            <span className="balance-currency">{profile?.currency || 'KES'} </span>
+            {formatBalance(spendableBalance)}
           </div>
           <div className="balance-phone">{profile?.phone}</div>
 
-          {/* Other wallets */}
-          {wallets.filter(w => w.currency !== 'KES' && w.balance > 0).length > 0 && (
-            <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {wallets.filter(w => w.currency !== 'KES' && w.balance > 0).map(w => (
-                <div key={w.currency} style={{
-                  background: 'rgba(255,255,255,0.15)', borderRadius: 8,
-                  padding: '4px 10px', fontSize: 12, fontFamily: 'Space Mono, monospace'
-                }}>
-                  {CURRENCIES[w.currency]?.flag} {w.currency} {Number(w.balance).toFixed(2)}
+          {/* Frozen funds notice */}
+          {frozenBalance > 0 && (
+            <div style={{
+              marginTop: 10,
+              background: 'rgba(68,138,255,0.15)',
+              border: '1px solid rgba(68,138,255,0.3)',
+              borderRadius: 8,
+              padding: '6px 12px',
+              fontSize: 12,
+              color: '#448aff',
+              fontFamily: 'Space Mono, monospace',
+            }}>
+              🔒 {profile?.currency || 'KES'} {formatBalance(frozenBalance)} frozen
+              {profile?.freeze_reason && (
+                <div style={{ fontSize: 11, opacity: 0.8, marginTop: 2 }}>
+                  Reason: {profile.freeze_reason}
                 </div>
-              ))}
+              )}
+            </div>
+          )}
+
+          {/* Other wallets */}
+          {wallets.filter(w => w.currency !== (profile?.currency || 'KES') && w.balance > 0).length > 0 && (
+            <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {wallets
+                .filter(w => w.currency !== (profile?.currency || 'KES') && w.balance > 0)
+                .map(w => (
+                  <div key={w.currency} style={{
+                    background: 'rgba(255,255,255,0.15)', borderRadius: 8,
+                    padding: '4px 10px', fontSize: 12, fontFamily: 'Space Mono, monospace',
+                  }}>
+                    {CURRENCIES[w.currency]?.flag} {w.currency} {Number(w.balance).toFixed(2)}
+                  </div>
+                ))}
             </div>
           )}
         </div>
