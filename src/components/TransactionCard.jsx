@@ -9,11 +9,34 @@ const icons = {
   withdraw: MinusCircle,
 };
 
+const REVERSAL_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+
+function useReversalCountdown(createdAt) {
+  const [timeLeft, setTimeLeft] = useState(null);
+
+  useEffect(() => {
+    const calc = () => {
+      const elapsed = Date.now() - new Date(createdAt).getTime();
+      const remaining = REVERSAL_WINDOW_MS - elapsed;
+      setTimeLeft(remaining > 0 ? remaining : 0);
+    };
+    calc();
+    const interval = setInterval(calc, 1000);
+    return () => clearInterval(interval);
+  }, [createdAt]);
+
+  if (timeLeft === null) return { expired: false, display: '' };
+  const minutes = Math.floor(timeLeft / 60000);
+  const seconds = Math.floor((timeLeft % 60000) / 1000);
+  return {
+    expired: timeLeft === 0,
+    display: `${minutes}:${seconds.toString().padStart(2, '0')}`,
+  };
+}
+
 export default function TransactionCard({ tx, currentUserId, onReverse }) {
-  // send type: sender pays, receiver gets
   const isActuallySend     = tx.type === 'send' && tx.sender_id === currentUserId;
   const isActuallyReceive  = tx.type === 'send' && tx.receiver_id === currentUserId;
-  // receive type: created by reversal RPC
   const isReceiveType      = tx.type === 'receive' && tx.receiver_id === currentUserId;
   const isDeposit          = tx.type === 'deposit';
   const isWithdraw         = tx.type === 'withdraw';
@@ -47,9 +70,16 @@ export default function TransactionCard({ tx, currentUserId, onReverse }) {
   const [response, setResponse] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  const { expired, display: countdownDisplay } = useReversalCountdown(tx.created_at);
+
   useEffect(() => {
     if (tx.type === 'send') fetchDispute();
   }, [tx.id]);
+
+  // Close dispute form if window expires while it's open
+  useEffect(() => {
+    if (expired && showDisputeForm) setShowDisputeForm(false);
+  }, [expired]);
 
   const fetchDispute = async () => {
     const { data } = await supabase
@@ -78,7 +108,7 @@ export default function TransactionCard({ tx, currentUserId, onReverse }) {
   };
 
   const handleRequestReversal = async () => {
-    if (!reason.trim()) return;
+    if (!reason.trim() || expired) return;
     setSubmitting(true);
     const { error } = await supabase.from('disputes').insert({
       transaction_id: tx.id,
@@ -185,11 +215,42 @@ export default function TransactionCard({ tx, currentUserId, onReverse }) {
         </div>
       )}
 
+      {/* Reversal button with countdown */}
       {canRequestReversal && (
-        <button onClick={() => setShowDisputeForm(v => !v)}
-          style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 4, alignSelf: 'flex-start', fontSize: 11, fontWeight: 600, color: 'var(--green)', background: 'var(--green-glow)', border: '1px solid var(--green)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
-          <RotateCcw size={11} /> Request Reversal
-        </button>
+        <div style={{ marginTop: 8 }}>
+          {!expired ? (
+            <button
+              onClick={() => setShowDisputeForm(v => !v)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                fontSize: 11, fontWeight: 600, color: 'var(--green)',
+                background: 'var(--green-glow)', border: '1px solid var(--green)',
+                borderRadius: 8, padding: '4px 10px', cursor: 'pointer',
+                fontFamily: 'Plus Jakarta Sans, sans-serif',
+              }}>
+              <RotateCcw size={11} />
+              Request Reversal
+              <span style={{
+                marginLeft: 4, background: 'rgba(0,230,118,0.15)',
+                border: '1px solid rgba(0,230,118,0.3)',
+                borderRadius: 6, padding: '1px 6px',
+                fontFamily: 'monospace', fontSize: 11, color: '#00e676',
+                minWidth: 36, textAlign: 'center',
+              }}>
+                {countdownDisplay}
+              </span>
+            </button>
+          ) : (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              fontSize: 11, fontWeight: 600, color: 'var(--text-muted)',
+              background: 'var(--surface2)', border: '1px solid var(--border)',
+              borderRadius: 8, padding: '4px 10px',
+            }}>
+              ⏱ Reversal window expired
+            </div>
+          )}
+        </div>
       )}
 
       {canRespond && !showResponseForm && (
@@ -199,7 +260,7 @@ export default function TransactionCard({ tx, currentUserId, onReverse }) {
         </button>
       )}
 
-      {showDisputeForm && (
+      {showDisputeForm && !expired && (
         <div style={{ marginTop: 8, padding: 12, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10 }}>
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Why do you want to reverse this transaction?</div>
           <textarea value={reason} onChange={e => setReason(e.target.value)} placeholder="Describe your reason..." rows={3}
