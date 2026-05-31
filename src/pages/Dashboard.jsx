@@ -90,9 +90,12 @@ export default function Dashboard() {
                   Reason: {profile.freeze_reason}
                 </div>
               )}
-              <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
-                Contact support to resolve this issue.
-              </div>
+              <Link to="/support" style={{
+                display: 'inline-block', marginTop: 8, fontSize: 12,
+                color: '#ff4444', fontWeight: 700, textDecoration: 'underline',
+              }}>
+                Contact Support →
+              </Link>
             </div>
           )}
 
