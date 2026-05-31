@@ -7,6 +7,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [suspended, setSuspended] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -18,11 +19,33 @@ export const AuthProvider = ({ children }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) fetchProfile(session.user.id);
-      else { setProfile(null); setLoading(false); }
+      else { setProfile(null); setLoading(false); setSuspended(false); }
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Real-time suspension: kicks user out immediately when admin suspends them
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel('suspension_watch_' + user.id)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'profiles',
+        filter: `id=eq.${user.id}`,
+      }, (payload) => {
+        if (payload.new.suspended) {
+          setSuspended(true);
+          supabase.auth.signOut();
+        }
+      })
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, [user?.id]);
 
   const fetchProfile = async (userId) => {
     const { data, error } = await supabase
@@ -32,6 +55,14 @@ export const AuthProvider = ({ children }) => {
       .single();
 
     if (!error && data) {
+      // Block suspended users on session restore
+      if (data.suspended) {
+        setSuspended(true);
+        await supabase.auth.signOut();
+        setLoading(false);
+        return;
+      }
+
       const { data: authData } = await supabase.auth.getUser();
       const metaPin = authData?.user?.user_metadata?.transaction_pin;
 
@@ -44,6 +75,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       setProfile(data);
+      setSuspended(false);
     }
 
     setLoading(false);
@@ -73,8 +105,23 @@ export const AuthProvider = ({ children }) => {
   };
 
   const login = async ({ email, password }) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return { error };
+    const { error, data } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return { error };
+
+    // Check suspension immediately after login
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('suspended')
+      .eq('id', data.user.id)
+      .single();
+
+    if (profileData?.suspended) {
+      await supabase.auth.signOut();
+      setSuspended(true);
+      return { error: { message: 'Your account has been suspended. Please contact support.' } };
+    }
+
+    return { error: null };
   };
 
   const logout = async () => {
@@ -82,7 +129,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, register, login, logout, refreshProfile }}>
+    <AuthContext.Provider value={{ user, profile, loading, suspended, register, login, logout, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );
