@@ -40,7 +40,12 @@ export default function History() {
   const filtered = filter === 'All'
     ? transactions
     : filter === 'Receive'
-    ? transactions.filter(tx => tx.type === 'send' && tx.receiver_id === profile?.id)
+    ? transactions.filter(tx =>
+        (tx.type === 'send' && tx.receiver_id === profile?.id) ||
+        (tx.type === 'receive' && tx.receiver_id === profile?.id)
+      )
+    : filter === 'Send'
+    ? transactions.filter(tx => tx.type === 'send' && tx.sender_id === profile?.id)
     : transactions.filter(tx => tx.type === filter.toLowerCase());
 
   return (
@@ -52,37 +57,23 @@ export default function History() {
           <span className="page-title">Transaction History</span>
         </div>
 
-        <div style={{
-          display: 'flex', gap: 8, overflowX: 'auto',
-          paddingBottom: 4, marginBottom: 20,
-        }}>
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, marginBottom: 20 }}>
           {FILTERS.map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
+            <button key={f} onClick={() => setFilter(f)}
               style={{
-                padding: '8px 16px',
-                borderRadius: 20,
-                border: '1.5px solid',
+                padding: '8px 16px', borderRadius: 20, border: '1.5px solid',
                 borderColor: filter === f ? 'var(--green)' : 'var(--border)',
                 background: filter === f ? 'var(--green-glow)' : 'transparent',
                 color: filter === f ? 'var(--green)' : 'var(--text-muted)',
-                fontFamily: 'Plus Jakarta Sans, sans-serif',
-                fontWeight: 600,
-                fontSize: 13,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-              }}
-            >
+                fontFamily: 'Plus Jakarta Sans, sans-serif', fontWeight: 600,
+                fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap',
+              }}>
               {f}
             </button>
           ))}
         </div>
 
-        <div style={{
-          background: 'var(--surface)', border: '1.5px solid var(--border)',
-          borderRadius: 'var(--radius)', padding: '0 16px',
-        }}>
+        <div style={{ background: 'var(--surface)', border: '1.5px solid var(--border)', borderRadius: 'var(--radius)', padding: '0 16px' }}>
           {loading ? (
             <div style={{ padding: 32, textAlign: 'center' }}>
               <div className="spinner" style={{ margin: '0 auto' }}></div>
@@ -94,12 +85,7 @@ export default function History() {
             </div>
           ) : (
             filtered.map(tx => (
-              <TransactionCard
-                key={tx.id}
-                tx={tx}
-                currentUserId={profile?.id}
-                onReverse={fetchAll}
-              />
+              <TransactionCard key={tx.id} tx={tx} currentUserId={profile?.id} onReverse={fetchAll} />
             ))
           )}
         </div>
