@@ -11,6 +11,7 @@ import History from './pages/History';
 import Wallets from './pages/Wallets';
 import Convert from './pages/Convert';
 import Settings from './pages/Settings';
+import Support from './pages/Support';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import './index.css';
@@ -51,6 +52,7 @@ function AppRoutes() {
       <Route path="/wallets" element={<PrivateRoute><Wallets /></PrivateRoute>} />
       <Route path="/convert" element={<PrivateRoute><Convert /></PrivateRoute>} />
       <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
+      <Route path="/support" element={<PrivateRoute><Support /></PrivateRoute>} />
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   );
