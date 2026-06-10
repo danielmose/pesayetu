@@ -17,6 +17,38 @@ const METHODS = [
   { id: 'card', label: 'Card Payout', icon: <CreditCard size={18} />, desc: 'Visa / Mastercard' },
 ];
 
+// Maps dial code → ISO 3166-1 alpha-2 country code for Chimoney API
+const DIAL_TO_ISO = {
+  '+93':'AF','+355':'AL','+213':'DZ','+376':'AD','+244':'AO','+1268':'AG','+54':'AR',
+  '+374':'AM','+61':'AU','+43':'AT','+994':'AZ','+1242':'BS','+973':'BH','+880':'BD',
+  '+1246':'BB','+375':'BY','+32':'BE','+501':'BZ','+229':'BJ','+975':'BT','+591':'BO',
+  '+387':'BA','+267':'BW','+55':'BR','+673':'BN','+359':'BG','+226':'BF','+257':'BI',
+  '+238':'CV','+855':'KH','+237':'CM','+1':'US','+236':'CF','+235':'TD','+56':'CL',
+  '+86':'CN','+57':'CO','+269':'KM','+242':'CG','+243':'CD','+506':'CR','+225':'CI',
+  '+385':'HR','+53':'CU','+357':'CY','+420':'CZ','+45':'DK','+253':'DJ','+1767':'DM',
+  '+1809':'DO','+593':'EC','+20':'EG','+503':'SV','+240':'GQ','+291':'ER','+372':'EE',
+  '+268':'SZ','+251':'ET','+679':'FJ','+358':'FI','+33':'FR','+241':'GA','+220':'GM',
+  '+995':'GE','+49':'DE','+233':'GH','+30':'GR','+1473':'GD','+502':'GT','+224':'GN',
+  '+245':'GW','+592':'GY','+509':'HT','+504':'HN','+36':'HU','+354':'IS','+91':'IN',
+  '+62':'ID','+98':'IR','+964':'IQ','+353':'IE','+972':'IL','+39':'IT','+1876':'JM',
+  '+81':'JP','+962':'JO','+77':'KZ','+254':'KE','+686':'KI','+965':'KW','+996':'KG',
+  '+856':'LA','+371':'LV','+961':'LB','+266':'LS','+231':'LR','+218':'LY','+423':'LI',
+  '+370':'LT','+352':'LU','+261':'MG','+265':'MW','+60':'MY','+960':'MV','+223':'ML',
+  '+356':'MT','+692':'MH','+222':'MR','+230':'MU','+52':'MX','+691':'FM','+373':'MD',
+  '+377':'MC','+976':'MN','+382':'ME','+212':'MA','+258':'MZ','+95':'MM','+264':'NA',
+  '+674':'NR','+977':'NP','+31':'NL','+64':'NZ','+505':'NI','+227':'NE','+234':'NG',
+  '+47':'NO','+968':'OM','+92':'PK','+680':'PW','+507':'PA','+675':'PG','+595':'PY',
+  '+51':'PE','+63':'PH','+48':'PL','+351':'PT','+974':'QA','+40':'RO','+7':'RU',
+  '+250':'RW','+1869':'KN','+1758':'LC','+1784':'VC','+685':'WS','+378':'SM','+239':'ST',
+  '+966':'SA','+221':'SN','+381':'RS','+248':'SC','+232':'SL','+65':'SG','+421':'SK',
+  '+386':'SI','+677':'SB','+252':'SO','+27':'ZA','+82':'KR','+211':'SS','+34':'ES',
+  '+94':'LK','+249':'SD','+597':'SR','+46':'SE','+41':'CH','+963':'SY','+886':'TW',
+  '+992':'TJ','+255':'TZ','+66':'TH','+670':'TL','+228':'TG','+676':'TO','+1868':'TT',
+  '+216':'TN','+90':'TR','+993':'TM','+688':'TV','+256':'UG','+380':'UA','+971':'AE',
+  '+44':'GB','+598':'UY','+998':'UZ','+678':'VU','+379':'VA','+58':'VE','+84':'VN',
+  '+967':'YE','+260':'ZM','+263':'ZW',
+};
+
 const COUNTRY_CODES = [
   { code: '+93', flag: '🇦🇫', name: 'Afghanistan' },
   { code: '+355', flag: '🇦🇱', name: 'Albania' },
@@ -384,7 +416,7 @@ export default function Withdraw() {
 
       if (method === 'mobilemoney') {
         chimoneyPayload.phoneNumber = fullPhone;
-        chimoneyPayload.countryToSend = countryCode === '+254' ? 'KE' : '';
+        chimoneyPayload.countryToSend = DIAL_TO_ISO[countryCode] || 'KE';
       } else if (method === 'bank') {
         chimoneyPayload.bankCode = bankCode;
         chimoneyPayload.accountNumber = accountNumber;
@@ -411,13 +443,8 @@ export default function Withdraw() {
         return;
       }
 
-      // Deduct from wallet
-      await supabase.from('currency_wallets')
-        .update({ balance: walletBalance - total })
-        .eq('user_id', profile.id)
-        .eq('currency', currency);
-
-      // Deduct from profiles.balance
+      // Let the RPC handle the deduction atomically — don't manually update wallet here
+      // Deduct from profiles.balance and currency_wallets via RPC
       await supabase.rpc('withdraw_money', { p_user_id: profile.id, p_amount: total });
 
       // Record in transactions table ✅

@@ -38,6 +38,20 @@ export default function Wallets() {
 
   const addWallet = async () => {
     if (!selectedCurrency) return;
+    // Check if wallet already exists to avoid silent insert failure
+    const { data: existing } = await supabase
+      .from('currency_wallets')
+      .select('id')
+      .eq('user_id', profile.id)
+      .eq('currency', selectedCurrency)
+      .maybeSingle();
+
+    if (existing) {
+      setAdding(false);
+      setSelectedCurrency('');
+      return;
+    }
+
     const { error } = await supabase
       .from('currency_wallets')
       .insert({ user_id: profile.id, currency: selectedCurrency, balance: 0 });

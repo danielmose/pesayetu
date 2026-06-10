@@ -8,7 +8,7 @@ import Navbar from '../components/Navbar';
 import BottomNav from '../components/BottomNav';
 
 export default function Convert() {
-  const { profile } = useAuth();
+  const { profile, refreshProfile } = useAuth();
   const [wallets, setWallets] = useState([]);
   const [rates, setRates] = useState(null);
   const [fromCurrency, setFromCurrency] = useState('KES');
@@ -23,7 +23,13 @@ export default function Convert() {
     loadRates();
   }, []);
 
+  // Sync default currencies from profile
+  useEffect(() => {
+    if (profile?.currency) setFromCurrency(profile.currency);
+  }, [profile?.currency]);
+
   const fetchWallets = async () => {
+    if (!profile?.id) return;
     const { data } = await supabase
       .from('currency_wallets')
       .select('*')
@@ -55,28 +61,42 @@ export default function Convert() {
     if (!amt || amt <= 0) { setError('Enter a valid amount'); return; }
     if (fromBalance < amt) { setError('Insufficient balance'); return; }
     if (fromCurrency === toCurrency) { setError('Select different currencies'); return; }
+    if (!fromWallet) { setError('You do not have a wallet for this currency'); return; }
 
     setLoading(true);
 
-    // Deduct from source wallet
-    if (fromWallet) {
-      await supabase
-        .from('currency_wallets')
-        .update({ balance: fromWallet.balance - amt })
-        .eq('user_id', profile.id)
-        .eq('currency', fromCurrency);
-    } else {
-      await supabase
-        .from('currency_wallets')
-        .insert({ user_id: profile.id, currency: fromCurrency, balance: -amt });
+    // Deduct from source wallet using current DB value (not stale state)
+    const { data: freshFrom } = await supabase
+      .from('currency_wallets')
+      .select('balance')
+      .eq('user_id', profile.id)
+      .eq('currency', fromCurrency)
+      .single();
+
+    if (!freshFrom || freshFrom.balance < amt) {
+      setError('Insufficient balance');
+      setLoading(false);
+      return;
     }
 
-    // Add to target wallet
-    const toWallet = wallets.find(w => w.currency === toCurrency);
-    if (toWallet) {
+    await supabase
+      .from('currency_wallets')
+      .update({ balance: freshFrom.balance - amt })
+      .eq('user_id', profile.id)
+      .eq('currency', fromCurrency);
+
+    // Add to target wallet — upsert to handle both existing and new wallets
+    const { data: freshTo } = await supabase
+      .from('currency_wallets')
+      .select('balance, id')
+      .eq('user_id', profile.id)
+      .eq('currency', toCurrency)
+      .maybeSingle();
+
+    if (freshTo) {
       await supabase
         .from('currency_wallets')
-        .update({ balance: toWallet.balance + convertedAmount })
+        .update({ balance: freshTo.balance + convertedAmount })
         .eq('user_id', profile.id)
         .eq('currency', toCurrency);
     } else {
@@ -85,19 +105,22 @@ export default function Convert() {
         .insert({ user_id: profile.id, currency: toCurrency, balance: convertedAmount });
     }
 
-    // Record transaction
-    await supabase.from('currency_transactions').insert({
+    // Record in transactions table (correct table name)
+    await supabase.from('transactions').insert({
       sender_id: profile.id,
       receiver_id: profile.id,
-      send_amount: amt,
-      send_currency: fromCurrency,
+      amount: amt,
+      currency: fromCurrency,
       receive_amount: convertedAmount,
       receive_currency: toCurrency,
       exchange_rate: rate,
+      charge: 0,
       type: 'convert',
+      note: `Converted ${fromCurrency} → ${toCurrency}`,
     });
 
     await fetchWallets();
+    await refreshProfile();
     setSuccess(true);
     setLoading(false);
   };
@@ -242,5 +265,4 @@ export default function Convert() {
       <BottomNav />
     </div>
   );
-                 }
-        
+}

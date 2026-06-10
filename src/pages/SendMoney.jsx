@@ -394,14 +394,7 @@ export default function SendMoney() {
       return;
     }
 
-    // Sync profiles.balance for both users
-    await supabase.from('profiles')
-      .update({ balance: (profile.balance || 0) - total })
-      .eq('id', profile.id);
-    await supabase.from('profiles')
-      .update({ balance: (receiver.balance || 0) + receiverGets })
-      .eq('id', receiver.id);
-
+    // Refresh both profiles from DB instead of computing stale balance manually
     await refreshProfile();
     await fetchWallets();
     setSuccess({ receiverName: receiver.full_name, receiverGets, receiveCurrency: form.receiveCurrency });

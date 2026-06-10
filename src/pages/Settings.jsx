@@ -233,7 +233,7 @@ function PinInput({ value, onChange, onKeyDown, refs }) {
 }
 
 export default function Settings() {
-  const { profile, logout } = useAuth();
+  const { profile, logout, refreshProfile } = useAuth();
   const [section, setSection] = useState(null);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
@@ -330,6 +330,7 @@ export default function Settings() {
     }
 
     setSuccess('Country updated successfully!');
+    await refreshProfile();
     setSection(null);
     setLoading(false);
   };

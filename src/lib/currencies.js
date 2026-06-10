@@ -69,8 +69,13 @@ export const CURRENCIES = {
 // Fetch real-time exchange rates (base: USD)
 export async function fetchExchangeRates() {
   try {
+    const apiKey = import.meta.env.VITE_EXCHANGE_RATE_API_KEY;
+    if (!apiKey) {
+      console.error('Missing VITE_EXCHANGE_RATE_API_KEY env variable');
+      return null;
+    }
     const response = await fetch(
-      'https://v6.exchangerate-api.com/v6/aab340babd4135654b3c3b40/latest/USD'
+      `https://v6.exchangerate-api.com/v6/${apiKey}/latest/USD`
     );
     const data = await response.json();
     return data.conversion_rates;

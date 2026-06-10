@@ -127,10 +127,10 @@ export default function Support() {
     clearTimeout(pressTimer.current);
   };
   const handleTouchEnd = (msg) => {
-    // Don't clear — let the timeout fire for long press
-    // Only dismiss if already showing options for this message
+    clearTimeout(pressTimer.current);
+    // If menu is already showing for this message, a second tap dismisses it
     if (pressedMsg === msg.id) {
-      // already showing, do nothing on touchend
+      setPressedMsg(null);
     }
   };
 

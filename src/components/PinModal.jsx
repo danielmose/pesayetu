@@ -4,20 +4,35 @@ import { Lock, X } from 'lucide-react';
 export default function PinModal({ onConfirm, onCancel, title = 'Enter PIN', error = '' }) {
   const [pin, setPin] = useState(['', '', '', '']);
   const inputs = useRef([]);
+  // Track whether we've already submitted to avoid double-fire
+  const submitted = useRef(false);
 
   useEffect(() => {
     inputs.current[0]?.focus();
   }, []);
+
+  // Reset pin boxes when error comes back (wrong PIN) so user can retry cleanly
+  useEffect(() => {
+    if (error) {
+      setPin(['', '', '', '']);
+      submitted.current = false;
+      setTimeout(() => inputs.current[0]?.focus(), 50);
+    }
+  }, [error]);
 
   const handleChange = (index, value) => {
     if (!/^\d*$/.test(value)) return;
     const newPin = [...pin];
     newPin[index] = value.slice(-1);
     setPin(newPin);
+
     if (value && index < 3) {
       inputs.current[index + 1]?.focus();
     }
-    if (newPin.every(d => d !== '') && newPin.join('').length === 4) {
+
+    // Auto-submit only once when all 4 digits are filled
+    if (newPin.every(d => d !== '') && newPin.join('').length === 4 && !submitted.current) {
+      submitted.current = true;
       onConfirm(newPin.join(''));
     }
   };

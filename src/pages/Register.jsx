@@ -314,21 +314,14 @@ export default function Register() {
       normalizedPhone = dialClean + rawPhone;
     }
 
-    // signUp with all data in metadata — trigger will create the profile row
-    const { error: regError, data } = await supabase.auth.signUp({
+    // Use AuthContext register — single source of truth for signup logic
+    const { error: regError, data } = await register({
+      fullName: form.fullName,
+      phone: normalizedPhone,
       email: form.email,
       password: form.password,
-      options: {
-        data: {
-          full_name: form.fullName,
-          phone: normalizedPhone,
-          country: selectedCountry.name,
-          dial_code: selectedCountry.dialCode,
-          currency: selectedCountry.currency,
-          currency_symbol: selectedCountry.symbol,
-          transaction_pin: btoa(pinStr),
-        }
-      }
+      selectedCountry,
+      pinStr,
     });
 
     if (regError) { setError(regError.message); setLoading(false); return; }
